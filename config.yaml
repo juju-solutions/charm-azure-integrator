@@ -1,0 +1,19 @@
+options:
+  credentials:
+    description: |
+      The base64-encoded JSON credentials data, which must include the 'application-id',
+      'application-password', and the 'subscription-id'.  These values can be retrieved
+      from Juju using the 'credentials' command and extracting the value of the 'details'
+      key for the appropriate credential. For example, using 'jq', replace '<credential-name>'
+      in the following:
+
+          juju credentials --format=json --show-secrets azure | jq '.["local-credentials"]["azure"]["cloud-credentials"]["<credential-name>"]["details"]'
+
+      This can be used from bundles with 'include-base64://' (see
+      https://jujucharms.com/docs/stable/charms-bundles#setting-charm-configurations-options-in-a-bundle),
+      or from the command-line with 'juju config aws credentials="$(base64 /path/to/file)"'.
+
+      This option will take precedence over the individual config options, if set.
+
+      It is strongly recommended that you use 'juju trust' instead, if available.
+      since config values can be read by anyone with read access to the model.

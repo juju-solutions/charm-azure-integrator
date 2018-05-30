@@ -1,0 +1,15 @@
+name: azure
+display-name: Azure
+summary: |
+  Proxy charm to enable Azure integrations via Juju relations.
+description: |
+  This charm can grant select permissions to instances of applications
+  related to it which enable integration with Azure specific features,
+  such as firewalls, load balancing, block storage, object storage, etc.
+maintainers: ['Cory Johns <johnsca@gmail.com>']
+series:
+  - xenial
+tags: ['azure', 'native', 'integration']
+provides:
+  azure:
+    interface: azure
