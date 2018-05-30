@@ -34,25 +34,26 @@ credentials via the `credentials`, charm config options.
 
 # Examples
 
-Following are some examples using GCE integration with CDK.
+Following are some examples using Azure integration with CDK.
 
-## Creating a pod with a PersistentDisk-backed volume
+## Creating a pod with a Disk Storage-backed volume
 
 This script creates a busybox pod with a persistent volume claim backed by
-GCE's PersistentDisk.
+Azure's Disk Storage.
 
 ```sh
 #!/bin/bash
 
-# create a storage class using the `kubernetes.io/gce-pd` provisioner
+# create a storage class using the `kubernetes.io/azure-disk` provisioner
 kubectl create -f - <<EOY
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: gce-standard
-provisioner: kubernetes.io/gce-pd
+  name: azure-standard
+provisioner: kubernetes.io/azure-disk
 parameters:
-  type: pd-standard
+  storageaccounttype: Standard_LRS
+  kind: shared
 EOY
 
 # create a persistent volume claim using that storage class
@@ -67,7 +68,7 @@ spec:
   resources:
     requests:
       storage: 100Mi
-  storageClassName: gce-standard
+  storageClassName: azure-standard
 EOY
 
 # create the busybox pod with a volume using that PVC:
@@ -96,9 +97,9 @@ spec:
 EOY
 ```
 
-## Creating a service with a GCE load-balancer
+## Creating a service with an Azure load-balancer
 
-The following script starts the hello-world pod behind a GCE-backed load-balancer.
+The following script starts the hello-world pod behind an Azure-backed load-balancer.
 
 ```sh
 #!/bin/bash
