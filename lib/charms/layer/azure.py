@@ -4,7 +4,7 @@ import re
 import subprocess
 from base64 import b64decode
 from math import ceil, floor
-from urllib.errors import HTTPError
+from urllib.error import HTTPError
 from urllib.request import urlopen
 
 import yaml
@@ -84,18 +84,31 @@ def login_cli(creds_data):
         _azure('logout')
     except AzureError:
         pass
-    _azure('login',
-           '--service-principal',
-           '-u', app_id,
-           '-p', app_pass,
-           '-t', tenant_id)
+    try:
+        _azure('login',
+               '--service-principal',
+               '-u', app_id,
+               '-p', app_pass,
+               '-t', tenant_id)
+    except AzureError as e:
+        # redact the credential info from the exception message
+        stderr = re.sub(app_id, '<app-id>', e.args[0])
+        stderr = re.sub(app_pass, '<app-pass>', stderr)
+        stderr = re.sub(tenant_id, '<tenant-id>', stderr)
+        # from None suppresses the previous exception from the stack trace
+        raise AzureError(stderr) from None
 
 
-def label_instance(instance, zone, labels):
+def tag_instance(vm_name, resource_group, tags):
     """
-    Label the given instance with the given labels.
+    Tag the given instance with the given tags.
     """
-    log('Labeling instance {} in {} with: {}', instance, zone, labels)
+    log('Tagging instance {} in {} with: {}', vm_name, resource_group, tags)
+    _azure('vm', 'update',
+           '--name', vm_name,
+           '--resource-group', resource_group,
+           '--set', *['tags.{}={}'.format(tag, value)
+                      for tag, value in tags.items()])
 
 
 def enable_instance_inspection(model_uuid, application_name):
@@ -202,11 +215,11 @@ def _get_tenant_id(subscription_id):
         return match.group(1)
 
 
-def _azure(cmd, subcmd, *args, return_stderr=False):
+def _azure(cmd, *args, return_stderr=False):
     """
     Call the azure-cli tool.
     """
-    cmd = ['az', '--output=json', cmd, subcmd]
+    cmd = ['az', cmd]
     cmd.extend(args)
     result = subprocess.run(cmd,
                             stdout=subprocess.PIPE,

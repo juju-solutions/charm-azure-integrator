@@ -8,7 +8,7 @@ description: |
   such as firewalls, load balancing, block storage, object storage, etc.
 maintainers: ['Cory Johns <johnsca@gmail.com>']
 series:
-  - xenial
+  - bionic
 tags: ['azure', 'native', 'integration']
 provides:
   azure:

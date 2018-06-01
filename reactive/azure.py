@@ -15,12 +15,13 @@ def update_creds():
     clear_flag('charm.azure.creds.set')
 
 
+@when_all('apt.installed.azure-cli')
 @when_not('charm.azure.creds.set')
 def get_creds():
     toggle_flag('charm.azure.creds.set', layer.azure.get_credentials())
 
 
-@when_all('snap.installed.google-cloud-sdk',
+@when_all('apt.installed.azure-cli',
           'charm.azure.creds.set')
 @when_not('endpoint.azure.requests-pending')
 def no_requests():
@@ -28,7 +29,7 @@ def no_requests():
     layer.status.active('ready')
 
 
-@when_all('snap.installed.google-cloud-sdk',
+@when_all('apt.installed.azure-cli',
           'charm.azure.creds.set',
           'endpoint.azure.requests-pending')
 def handle_requests():
@@ -36,17 +37,11 @@ def handle_requests():
     for request in azure.requests:
         layer.status.maintenance('granting request for {}'.format(
             request.unit_name))
-        if not request.has_credentials:
-            creds = layer.azure.create_account_key(
-                request.model_uuid,
-                request.application_name,
-                request.relation_id)
-            request.set_credentials(creds)
-        if request.instance_labels:
-            layer.azure.label_instance(
-                request.instance,
-                request.zone,
-                request.instance_labels)
+        if request.instance_tags:
+            layer.azure.tag_instance(
+                request.vm_name,
+                request.resource_group,
+                request.instance_tags)
         if request.requested_instance_inspection:
             layer.azure.enable_instance_inspection(
                 request.model_uuid,
