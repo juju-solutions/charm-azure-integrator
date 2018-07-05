@@ -4,12 +4,14 @@ import re
 import subprocess
 from base64 import b64decode
 from math import ceil, floor
+from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
 import yaml
 
 from charmhelpers.core import hookenv
+from charmhelpers.core.unitdata import kv
 
 from charms.layer import status
 
@@ -81,15 +83,19 @@ def login_cli(creds_data):
     sub_id = creds_data['subscription-id']
     tenant_id = _get_tenant_id(sub_id)
     try:
+        log('Forcing logout of Azure CLI')
         _azure('logout')
     except AzureError:
         pass
     try:
+        log('Logging in to Azure CLI')
         _azure('login',
                '--service-principal',
                '-u', app_id,
                '-p', app_pass,
                '-t', tenant_id)
+        # cache the subscription ID for use in roles
+        kv().set('charm.azure.sub-id', sub_id)
     except AzureError as e:
         # redact the credential info from the exception message
         stderr = re.sub(app_id, '<app-id>', e.args[0])
@@ -99,65 +105,91 @@ def login_cli(creds_data):
         raise AzureError(stderr) from None
 
 
-def tag_instance(vm_name, resource_group, tags):
+def ensure_msi(request):
+    msi = _get_msi(request.vm_id)
+    if not msi:
+        log('Enabling Managed Service Identity')
+        result = _azure('vm', 'identity', 'assign',
+                        '--name', request.vm_name,
+                        '--resource-group', request.resource_group)
+        vm_identities = kv().get('charm.azure.vm-identities', {})
+        msi = vm_identities[request.vm_id] = result['systemAssignedIdentity']
+        kv().set('charm.azure.vm-identities', vm_identities)
+    log('Instance MSI is: {}', msi)
+
+
+def tag_instance(request):
     """
     Tag the given instance with the given tags.
     """
-    log('Tagging instance {} in {} with: {}', vm_name, resource_group, tags)
+    log('Tagging instance with: {}', request.instance_tags)
     _azure('vm', 'update',
-           '--name', vm_name,
-           '--resource-group', resource_group,
+           '--name', request.vm_name,
+           '--resource-group', request.resource_group,
            '--set', *['tags.{}={}'.format(tag, value)
-                      for tag, value in tags.items()])
+                      for tag, value in request.instance_tags.items()])
 
 
-def enable_instance_inspection(model_uuid, application_name):
+def enable_instance_inspection(request):
     """
     Enable instance inspection access for the given application.
     """
-    log('Enabling instance inspection for {}', application_name)
+    log('Enabling instance inspection')
+    msi = _get_msi(request.vm_id)
+    role_name = _get_role('vm-reader')
+    log('Assigning role {}', role_name)
+    _azure('role', 'assignment', 'create',
+           '--assignee-object-id', msi,
+           '--resource-group', request.resource_group,
+           '--role', role_name)
 
 
-def enable_network_management(model_uuid, application_name):
+def enable_network_management(request):
     """
     Enable network management for the given application.
     """
-    log('Enabling network management for {}', application_name)
+    return  # not implemented
+    log('Enabling network management')
 
 
-def enable_security_management(model_uuid, application_name):
+def enable_security_management(request):
     """
     Enable security management for the given application.
     """
-    log('Enabling security management for {}', application_name)
+    return  # not implemented
+    log('Enabling security management')
 
 
-def enable_block_storage_management(model_uuid, application_name):
+def enable_block_storage_management(request):
     """
     Enable block storage (disk) management for the given application.
     """
-    log('Enabling block storage management for {}', application_name)
+    return  # not implemented
+    log('Enabling block storage management')
 
 
-def enable_dns_management(model_uuid, application_name):
+def enable_dns_management(request):
     """
     Enable DNS management for the given application.
     """
-    log('Enabling DNS management for {}', application_name)
+    return  # not implemented
+    log('Enabling DNS management')
 
 
-def enable_object_storage_access(model_uuid, application_name):
+def enable_object_storage_access(request):
     """
     Enable object storage read-only access for the given application.
     """
-    log('Enabling object storage read for {}', application_name)
+    return  # not implemented
+    log('Enabling object storage read')
 
 
-def enable_object_storage_management(model_uuid, application_name):
+def enable_object_storage_management(request):
     """
     Enable object storage management for the given application.
     """
-    log('Enabling object store management for {}', application_name)
+    return  # not implemented
+    log('Enabling object store management')
 
 
 def cleanup():
@@ -233,3 +265,42 @@ def _azure(cmd, *args, return_stderr=False):
     if stdout:
         stdout = json.loads(stdout)
     return stdout
+
+
+def _get_msi(vm_id):
+    """
+    Get the Managed System Identity for the VM.
+    """
+    vm_identities = kv().get('charm.azure.vm-identities', {})
+    return vm_identities.get(vm_id)
+
+
+def _get_role(role_name):
+    """
+    Translate short role name into a full role name and ensure that the
+    custom role is loaded.
+
+    The custom roles have to be applied to a specific subscription ID, but
+    the subscription ID applies to the entire credential, so will almost
+    certainly be reused, so there's not much danger in hitting the 2k
+    custom role limit.
+    """
+    known_roles = kv().get('charm.azure.roles', {})
+    if role_name in known_roles:
+        return known_roles[role_name]
+    sub_id = kv().get('charm.azure.sub-id')
+    role_file = Path('files/roles/{}.json'.format(role_name))
+    role_data = json.loads(role_file.read_text())
+    role_fullname = role_data['Name'].format(sub_id)
+    scope = role_data['AssignableScopes'][0].format(sub_id)
+    role_data['Name'] = role_fullname
+    role_data['AssignableScopes'][0] = scope
+    try:
+        log('Ensuring role {}', role_fullname)
+        _azure('role', 'definition', 'create',
+               '--role-definition', json.dumps(role_data))
+    except AzureError as e:
+        if 'already exists' not in e.args[0]:
+            raise
+    known_roles[role_name] = role_fullname
+    return role_fullname

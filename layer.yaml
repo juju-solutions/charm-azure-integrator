@@ -3,7 +3,7 @@ includes:
   - 'layer:basic'
   - 'layer:status'
   - 'layer:apt'
-  - 'interface:azure'
+  - 'interface:azure-integration'
 options:
   basic:
     use_venv: true
