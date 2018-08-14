@@ -1,0 +1,11 @@
+{
+    "Name": "juju-charm-disk-manager-{}",
+    "IsCustom": true,
+    "Description": "Manage disks for VMs",
+    "Actions": [
+        "Microsoft.Compute/Disks*",
+    ],
+    "AssignableScopes": [
+        "/subscriptions/{}"
+    ]
+}

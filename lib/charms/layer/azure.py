@@ -135,61 +135,55 @@ def enable_instance_inspection(request):
     Enable instance inspection access for the given application.
     """
     log('Enabling instance inspection')
-    msi = _get_msi(request.vm_id)
-    role_name = _get_role('vm-reader')
-    log('Assigning role {}', role_name)
-    _azure('role', 'assignment', 'create',
-           '--assignee-object-id', msi,
-           '--resource-group', request.resource_group,
-           '--role', role_name)
+    _assign_role(request, _get_role('vm-reader'))
 
 
 def enable_network_management(request):
     """
     Enable network management for the given application.
     """
-    return  # not implemented
     log('Enabling network management')
+    _assign_role(request, 'Network Contributor')
 
 
 def enable_security_management(request):
     """
     Enable security management for the given application.
     """
-    return  # not implemented
     log('Enabling security management')
+    _assign_role(request, 'Security Manager')
 
 
 def enable_block_storage_management(request):
     """
     Enable block storage (disk) management for the given application.
     """
-    return  # not implemented
     log('Enabling block storage management')
+    _assign_role(request, _get_role('disk-manager'))
 
 
 def enable_dns_management(request):
     """
     Enable DNS management for the given application.
     """
-    return  # not implemented
     log('Enabling DNS management')
+    _assign_role(request, 'DNS Zone Contributor')
 
 
 def enable_object_storage_access(request):
     """
     Enable object storage read-only access for the given application.
     """
-    return  # not implemented
     log('Enabling object storage read')
+    _assign_role(request, 'Storage Blob Data Reader (Preview)')
 
 
 def enable_object_storage_management(request):
     """
     Enable object storage management for the given application.
     """
-    return  # not implemented
     log('Enabling object store management')
+    _assign_role(request, 'Storage Blob Data Contributor (Preview)')
 
 
 def cleanup():
@@ -304,3 +298,11 @@ def _get_role(role_name):
             raise
     known_roles[role_name] = role_fullname
     return role_fullname
+
+
+def _assign_role(request, role_name):
+    msi = _get_msi(request.vm_id)
+    _azure('role', 'assignment', 'create',
+           '--assignee-object-id', msi,
+           '--resource-group', request.resource_group,
+           '--role', role_name)
