@@ -3,7 +3,7 @@
     "IsCustom": true,
     "Description": "Manage disks for VMs",
     "Actions": [
-        "Microsoft.Compute/Disks*",
+        "Microsoft.Compute/Disks*"
     ],
     "AssignableScopes": [
         "/subscriptions/{}"
