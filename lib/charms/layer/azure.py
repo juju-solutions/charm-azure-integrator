@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 from base64 import b64decode
+from enum import Enum
 from math import ceil, floor
 from pathlib import Path
 from urllib.error import HTTPError
@@ -20,6 +21,15 @@ ENTITY_PREFIX = 'charm.azure'
 MODEL_UUID = os.environ['JUJU_MODEL_UUID']
 MAX_ROLE_NAME_LEN = 64
 MAX_POLICY_NAME_LEN = 128
+
+
+class StandardRole(Enum):
+    NETWORK_MANAGER = '4d97b98b-1d4f-4787-a291-c67834d212e7'
+    SECURITY_MANAGER = 'e3d13bf0-dd5a-482e-ba6b-9b8433878d10'
+    DNS_MANAGER = 'befefa01-2a29-4197-83a8-272ff33ce314'
+    OBJECT_STORE_READER = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
+    OBJECT_STORE_MANAGER = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+
 
 # When debugging hooks, for some reason HOME is set to /home/ubuntu, whereas
 # during normal hook execution, it's /root. Set it here to be consistent.
@@ -143,7 +153,7 @@ def enable_network_management(request):
     Enable network management for the given application.
     """
     log('Enabling network management')
-    _assign_role(request, 'Network Contributor')
+    _assign_role(request, StandardRole.NETWORK_MANAGER)
 
 
 def enable_security_management(request):
@@ -151,7 +161,7 @@ def enable_security_management(request):
     Enable security management for the given application.
     """
     log('Enabling security management')
-    _assign_role(request, 'Security Manager')
+    _assign_role(request, StandardRole.SECURITY_MANAGER)
 
 
 def enable_block_storage_management(request):
@@ -167,7 +177,7 @@ def enable_dns_management(request):
     Enable DNS management for the given application.
     """
     log('Enabling DNS management')
-    _assign_role(request, 'DNS Zone Contributor')
+    _assign_role(request, StandardRole.DNS_MANAGER)
 
 
 def enable_object_storage_access(request):
@@ -175,7 +185,7 @@ def enable_object_storage_access(request):
     Enable object storage read-only access for the given application.
     """
     log('Enabling object storage read')
-    _assign_role(request, 'Storage Blob Data Reader (Preview)')
+    _assign_role(request, StandardRole.OBJECT_STORE_READER)
 
 
 def enable_object_storage_management(request):
@@ -183,7 +193,7 @@ def enable_object_storage_management(request):
     Enable object storage management for the given application.
     """
     log('Enabling object store management')
-    _assign_role(request, 'Storage Blob Data Contributor (Preview)')
+    _assign_role(request, StandardRole.OBJECT_STORE_MANAGER)
 
 
 def cleanup():
@@ -199,6 +209,21 @@ def cleanup():
 class AzureError(Exception):
     """
     Exception class representing an error returned from the azure-cli tool.
+    """
+    @classmethod
+    def get(cls, message):
+        """
+        Factory method to create either an instance of this class or a
+        meta-subclass for certain `message`s.
+        """
+        if 'already exists' in message:
+            return AlreadyExistsAzureError(message)
+        return AzureError(message)
+
+
+class AlreadyExistsAzureError(AzureError):
+    """
+    Meta-error subclass of AzureError representing something already existing.
     """
     pass
 
@@ -253,7 +278,7 @@ def _azure(cmd, *args, return_stderr=False):
     stdout = result.stdout.decode('utf8').strip()
     stderr = result.stderr.decode('utf8').strip()
     if result.returncode != 0:
-        raise AzureError(stderr)
+        raise AzureError.get(stderr)
     if return_stderr:
         return stderr
     if stdout:
@@ -300,9 +325,14 @@ def _get_role(role_name):
     return role_fullname
 
 
-def _assign_role(request, role_name):
+def _assign_role(request, role):
+    if isinstance(role, StandardRole):
+        role = role.value
     msi = _get_msi(request.vm_id)
-    _azure('role', 'assignment', 'create',
-           '--assignee-object-id', msi,
-           '--resource-group', request.resource_group,
-           '--role', role_name)
+    try:
+        _azure('role', 'assignment', 'create',
+               '--assignee-object-id', msi,
+               '--resource-group', request.resource_group,
+               '--role', role)
+    except AlreadyExistsAzureError:
+        pass
