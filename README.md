@@ -7,30 +7,55 @@ the applications that are related to this charm.
 ## Usage
 
 When on Azure, this charm can be deployed, granted trust via Juju to access Azure,
-and then related to an application that supports the [interface][].
+and then related to an application that supports the [interface][].  The set
+of permissions that the related application could request is documented in the
+interface's [Requires API documentation][api-doc].
 
 For example, [CDK][] has support for this, and can be deployed with the
 following bundle overlay:
 
 ```yaml
 applications:
-  azure:
-    charm: cs:~containers/azure
+  azure-integrator:
+    charm: cs:~containers/azure-integrator
     num_units: 1
 relations:
-  - ['azure', 'kubernetes-master']
-  - ['azure', 'kubernetes-worker']
+  - ['azure-integrator', 'kubernetes-master']
+  - ['azure-integrator', 'kubernetes-worker']
 ```
 
-Using Juju 2.4-beta1 or later:
+Then deploy CDK using this overlay:
 
 ```
 juju deploy cs:canonical-kubernetes --overlay ./k8s-azure-overlay.yaml
-juju trust azure
 ```
 
-To deploy with earlier versions of Juju, you will need to provide the cloud
-credentials via the `credentials`, charm config options.
+The charm then needs to be granted access to credentials that it can use to
+setup integrations.  Using Juju 2.4 or later, you can easily grant access to
+the credentials used deploy the integrator itself:
+
+```
+juju trust azure-integrator
+```
+
+To deploy with earlier versions of Juju, or if you wish to provide it different
+credentials, you will need to provide the cloud credentials via the `credentials`,
+charm config options.
+
+**Note:** The credentials used must have rights to use the API to inspect the
+instances connecting to it, enable a Managed Service Identity (MSI) for those
+instances, assign roles to those instances, and create custom roles.  This may
+be different from the access permissions that Juju itself requires.
+
+# Resource Usage Note
+
+By relating to this charm, other charms can directly allocate resources, such
+as managed disks and load balancers, which could lead to cloud charges and
+count against quotas.  Because these resources are not managed by Juju, they
+will not be automatically deleted when the models or applications are
+destroyed, nor will they show up in Juju's status or GUI.  It is therefore up
+to the operator to manually delete these resources when they are no longer
+needed, using the Azure management website or API.
 
 # Examples
 
@@ -110,5 +135,6 @@ watch kubectl get svc -o wide --selector=run=load-balancer-example
 ```
 
 
-[interface]: https://github.com/juju-solutions/interface-azure
+[interface]: https://github.com/juju-solutions/interface-azure-integration
+[api-doc]: https://github.com/juju-solutions/interface-azure-integration/blob/master/docs/requires.md
 [CDK]: https://jujucharms.com/canonical-kubernetes
