@@ -3,13 +3,16 @@ import os
 import re
 import subprocess
 from base64 import b64decode
+from enum import Enum
 from math import ceil, floor
+from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
 import yaml
 
 from charmhelpers.core import hookenv
+from charmhelpers.core.unitdata import kv
 
 from charms.layer import status
 
@@ -18,6 +21,15 @@ ENTITY_PREFIX = 'charm.azure'
 MODEL_UUID = os.environ['JUJU_MODEL_UUID']
 MAX_ROLE_NAME_LEN = 64
 MAX_POLICY_NAME_LEN = 128
+
+
+class StandardRole(Enum):
+    NETWORK_MANAGER = '4d97b98b-1d4f-4787-a291-c67834d212e7'
+    SECURITY_MANAGER = 'e3d13bf0-dd5a-482e-ba6b-9b8433878d10'
+    DNS_MANAGER = 'befefa01-2a29-4197-83a8-272ff33ce314'
+    OBJECT_STORE_READER = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
+    OBJECT_STORE_MANAGER = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+
 
 # When debugging hooks, for some reason HOME is set to /home/ubuntu, whereas
 # during normal hook execution, it's /root. Set it here to be consistent.
@@ -81,15 +93,19 @@ def login_cli(creds_data):
     sub_id = creds_data['subscription-id']
     tenant_id = _get_tenant_id(sub_id)
     try:
+        log('Forcing logout of Azure CLI')
         _azure('logout')
     except AzureError:
         pass
     try:
+        log('Logging in to Azure CLI')
         _azure('login',
                '--service-principal',
                '-u', app_id,
                '-p', app_pass,
                '-t', tenant_id)
+        # cache the subscription ID for use in roles
+        kv().set('charm.azure.sub-id', sub_id)
     except AzureError as e:
         # redact the credential info from the exception message
         stderr = re.sub(app_id, '<app-id>', e.args[0])
@@ -99,65 +115,85 @@ def login_cli(creds_data):
         raise AzureError(stderr) from None
 
 
-def tag_instance(vm_name, resource_group, tags):
+def ensure_msi(request):
+    msi = _get_msi(request.vm_id)
+    if not msi:
+        log('Enabling Managed Service Identity')
+        result = _azure('vm', 'identity', 'assign',
+                        '--name', request.vm_name,
+                        '--resource-group', request.resource_group)
+        vm_identities = kv().get('charm.azure.vm-identities', {})
+        msi = vm_identities[request.vm_id] = result['systemAssignedIdentity']
+        kv().set('charm.azure.vm-identities', vm_identities)
+    log('Instance MSI is: {}', msi)
+
+
+def tag_instance(request):
     """
     Tag the given instance with the given tags.
     """
-    log('Tagging instance {} in {} with: {}', vm_name, resource_group, tags)
+    log('Tagging instance with: {}', request.instance_tags)
     _azure('vm', 'update',
-           '--name', vm_name,
-           '--resource-group', resource_group,
+           '--name', request.vm_name,
+           '--resource-group', request.resource_group,
            '--set', *['tags.{}={}'.format(tag, value)
-                      for tag, value in tags.items()])
+                      for tag, value in request.instance_tags.items()])
 
 
-def enable_instance_inspection(model_uuid, application_name):
+def enable_instance_inspection(request):
     """
     Enable instance inspection access for the given application.
     """
-    log('Enabling instance inspection for {}', application_name)
+    log('Enabling instance inspection')
+    _assign_role(request, _get_role('vm-reader'))
 
 
-def enable_network_management(model_uuid, application_name):
+def enable_network_management(request):
     """
     Enable network management for the given application.
     """
-    log('Enabling network management for {}', application_name)
+    log('Enabling network management')
+    _assign_role(request, StandardRole.NETWORK_MANAGER)
 
 
-def enable_security_management(model_uuid, application_name):
+def enable_security_management(request):
     """
     Enable security management for the given application.
     """
-    log('Enabling security management for {}', application_name)
+    log('Enabling security management')
+    _assign_role(request, StandardRole.SECURITY_MANAGER)
 
 
-def enable_block_storage_management(model_uuid, application_name):
+def enable_block_storage_management(request):
     """
     Enable block storage (disk) management for the given application.
     """
-    log('Enabling block storage management for {}', application_name)
+    log('Enabling block storage management')
+    _assign_role(request, _get_role('disk-manager'))
 
 
-def enable_dns_management(model_uuid, application_name):
+def enable_dns_management(request):
     """
     Enable DNS management for the given application.
     """
-    log('Enabling DNS management for {}', application_name)
+    log('Enabling DNS management')
+    _assign_role(request, StandardRole.DNS_MANAGER)
 
 
-def enable_object_storage_access(model_uuid, application_name):
+def enable_object_storage_access(request):
     """
     Enable object storage read-only access for the given application.
     """
-    log('Enabling object storage read for {}', application_name)
+    log('Enabling object storage read')
+    _assign_role(request, StandardRole.OBJECT_STORE_READER)
 
 
-def enable_object_storage_management(model_uuid, application_name):
+def enable_object_storage_management(request):
     """
     Enable object storage management for the given application.
     """
-    log('Enabling object store management for {}', application_name)
+    log('Enabling object store management')
+    _assign_role(request, StandardRole.OBJECT_STORE_MANAGER)
 
 
 def cleanup():
@@ -173,6 +209,21 @@ def cleanup():
 class AzureError(Exception):
     """
     Exception class representing an error returned from the azure-cli tool.
+    """
+    @classmethod
+    def get(cls, message):
+        """
+        Factory method to create either an instance of this class or a
+        meta-subclass for certain `message`s.
+        """
+        if 'already exists' in message:
+            return AlreadyExistsAzureError(message)
+        return AzureError(message)
+
+
+class AlreadyExistsAzureError(AzureError):
+    """
+    Meta-error subclass of AzureError representing something already existing.
     """
     pass
 
@@ -227,9 +278,61 @@ def _azure(cmd, *args, return_stderr=False):
     stdout = result.stdout.decode('utf8').strip()
     stderr = result.stderr.decode('utf8').strip()
     if result.returncode != 0:
-        raise AzureError(stderr)
+        raise AzureError.get(stderr)
     if return_stderr:
         return stderr
     if stdout:
         stdout = json.loads(stdout)
     return stdout
+
+
+def _get_msi(vm_id):
+    """
+    Get the Managed System Identity for the VM.
+    """
+    vm_identities = kv().get('charm.azure.vm-identities', {})
+    return vm_identities.get(vm_id)
+
+
+def _get_role(role_name):
+    """
+    Translate short role name into a full role name and ensure that the
+    custom role is loaded.
+
+    The custom roles have to be applied to a specific subscription ID, but
+    the subscription ID applies to the entire credential, so will almost
+    certainly be reused, so there's not much danger in hitting the 2k
+    custom role limit.
+    """
+    known_roles = kv().get('charm.azure.roles', {})
+    if role_name in known_roles:
+        return known_roles[role_name]
+    sub_id = kv().get('charm.azure.sub-id')
+    role_file = Path('files/roles/{}.json'.format(role_name))
+    role_data = json.loads(role_file.read_text())
+    role_fullname = role_data['Name'].format(sub_id)
+    scope = role_data['AssignableScopes'][0].format(sub_id)
+    role_data['Name'] = role_fullname
+    role_data['AssignableScopes'][0] = scope
+    try:
+        log('Ensuring role {}', role_fullname)
+        _azure('role', 'definition', 'create',
+               '--role-definition', json.dumps(role_data))
+    except AzureError as e:
+        if 'already exists' not in e.args[0]:
+            raise
+    known_roles[role_name] = role_fullname
+    return role_fullname
+
+
+def _assign_role(request, role):
+    if isinstance(role, StandardRole):
+        role = role.value
+    msi = _get_msi(request.vm_id)
+    try:
+        _azure('role', 'assignment', 'create',
+               '--assignee-object-id', msi,
+               '--resource-group', request.resource_group,
+               '--role', role)
+    except AlreadyExistsAzureError:
+        pass

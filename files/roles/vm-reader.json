@@ -1,0 +1,18 @@
+{
+    "Name": "juju-charm-vm-reader-{}",
+    "IsCustom": true,
+    "Description": "Read info about VMs but not modify",
+    "Actions": [
+        "Microsoft.Authorization/*/read",
+        "Microsoft.Compute/*/read",
+        "Microsoft.Network/*/read",
+        "Microsoft.ResourceHealth/*/read",
+        "Microsoft.Resources/deployments/read",
+        "Microsoft.Resources/subscriptions/resourceGroups/read",
+        "Microsoft.Storage/storageAccounts/read",
+        "Microsoft.Support/*/read"
+    ],
+    "AssignableScopes": [
+        "/subscriptions/{}"
+    ]
+}

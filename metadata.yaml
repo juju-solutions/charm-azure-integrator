@@ -1,5 +1,5 @@
-name: azure
-display-name: Azure
+name: azure-integrator
+display-name: Azure Integrator
 summary: |
   Proxy charm to enable Azure integrations via Juju relations.
 description: |
@@ -11,5 +11,5 @@ series:
   - bionic
 tags: ['azure', 'native', 'integration']
 provides:
-  azure:
-    interface: azure
+  clients:
+    interface: azure-integration
