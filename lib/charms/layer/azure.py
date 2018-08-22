@@ -128,6 +128,23 @@ def ensure_msi(request):
     log('Instance MSI is: {}', msi)
 
 
+def send_additional_metadata(request):
+    """
+    Get additional info about the requesting instance via the API that isn't
+    available from the metadata server.
+    """
+    res_grp = _azure('group', 'show', '--name', request.resource_group)
+    # hard-code most of these because with Juju, they're always the same
+    # and the queries required to look them up are a PITA
+    request.send_additional_metadata(
+        resource_group_location=res_grp['location'],
+        vnet_name='juju-internal-network',
+        vnet_resource_group=request.resource_group,
+        subnet_name='juju-internal-subnet',
+        security_group_name='juju-internal-nsg',
+    )
+
+
 def tag_instance(request):
     """
     Tag the given instance with the given tags.

@@ -42,6 +42,7 @@ def handle_requests():
                 request.vm_name,
                 request.unit_name))
             layer.azure.ensure_msi(request)
+            layer.azure.send_additional_metadata(request)
             if request.instance_tags:
                 layer.azure.tag_instance(request)
             if request.requested_instance_inspection:
