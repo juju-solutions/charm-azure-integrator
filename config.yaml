@@ -27,8 +27,9 @@ options:
       sources.list(5), or in the form ppa:<user>/<ppa-name> for adding
       Personal Package Archives, or a distribution component to enable.
     type: string
+    # TODO: make series dynamic, see: https://bugs.launchpad.net/layer-apt/+bug/1796993
     default: |
-      - deb https://packages.microsoft.com/repos/azure-cli/ bionic main
+      - deb https://packages.microsoft.com/repos/azure-cli/ xenial main
   install_keys:
     description: >
       List of signing keys for install_sources package sources, per
