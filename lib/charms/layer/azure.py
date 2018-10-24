@@ -40,6 +40,10 @@ def log(msg, *args):
     hookenv.log(msg.format(*args), hookenv.INFO)
 
 
+def log_debug(msg, *args):
+    hookenv.log(msg.format(*args), hookenv.DEBUG)
+
+
 def log_err(msg, *args):
     hookenv.log(msg.format(*args), hookenv.ERROR)
 
@@ -73,10 +77,12 @@ def get_credentials():
     if config['credentials']:
         try:
             creds_data = b64decode(config['credentials']).decode('utf8')
-            login_cli(creds_data)
+            login_cli(json.loads(creds_data))
             return True
-        except Exception:
-            status.blocked('invalid value for credentials config')
+        except Exception as ex:
+            msg = 'invalid value for credentials config'
+            log_debug('{}: {}', msg, ex)
+            status.blocked(msg)
             return False
 
     # no creds provided
