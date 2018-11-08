@@ -78,7 +78,7 @@ metadata:
 provisioner: kubernetes.io/azure-disk
 parameters:
   storageaccounttype: Standard_LRS
-  kind: shared
+  kind: managed
 EOY
 
 # create a persistent volume claim using that storage class

@@ -4,8 +4,10 @@ from charms.reactive import (
     when_all,
     when_any,
     when_not,
+    set_flag,
     toggle_flag,
     clear_flag,
+    hook,
 )
 from charms.reactive.relations import endpoint_from_name
 
@@ -25,6 +27,17 @@ def get_creds():
 
 @when_all('apt.installed.azure-cli',
           'charm.azure.creds.set')
+@when_not('charm.azure.initial-role-update')
+def update_roles_on_install():
+    layer.status.maintenance('loading roles')
+    layer.azure.update_roles()
+    set_flag('charm.azure.initial-role-update')
+    layer.status.active('ready')
+
+
+@when_all('apt.installed.azure-cli',
+          'charm.azure.creds.set',
+          'charm.azure.initial-role-update')
 @when_not('endpoint.clients.requests-pending')
 def no_requests():
     layer.azure.cleanup()
@@ -33,6 +46,7 @@ def no_requests():
 
 @when_all('apt.installed.azure-cli',
           'charm.azure.creds.set',
+          'charm.azure.initial-role-update',
           'endpoint.clients.requests-pending')
 def handle_requests():
     azure = endpoint_from_name('clients')
@@ -67,3 +81,8 @@ def handle_requests():
         layer.azure.log_err(format_exc())
         layer.status.blocked('error while granting requests; '
                              'check credentials and debug-log')
+
+
+@hook('upgrade-charm')
+def update_roles():
+    layer.azure.update_roles()
