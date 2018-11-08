@@ -25,8 +25,8 @@ def get_creds():
     toggle_flag('charm.azure.creds.set', layer.azure.get_credentials())
 
 
-@when_all('apt.installed.azure-cli')
-@when_all('charm.azure.creds.set')
+@when_all('apt.installed.azure-cli',
+          'charm.azure.creds.set')
 @when_not('charm.azure.initial-role-update')
 def update_roles_on_install():
     layer.status.maintenance('loading roles')
