@@ -6,6 +6,7 @@ from charms.reactive import (
     when_not,
     toggle_flag,
     clear_flag,
+    hook,
 )
 from charms.reactive.relations import endpoint_from_name
 
@@ -67,3 +68,8 @@ def handle_requests():
         layer.azure.log_err(format_exc())
         layer.status.blocked('error while granting requests; '
                              'check credentials and debug-log')
+
+
+@hook('upgrade-charm')
+def update_roles():
+    layer.azure.update_roles()

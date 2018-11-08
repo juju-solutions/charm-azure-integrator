@@ -226,6 +226,33 @@ def cleanup():
     pass
 
 
+def update_roles():
+    """
+    Update all custom roles based on current definition file.
+    """
+    sub_id = kv().get('charm.azure.sub-id')
+    known_roles = {}
+    for role_file in Path('files/roles/').glob('*.json'):
+        role_name = role_file.stem
+        role_data = json.loads(role_file.read_text())
+        role_fullname = role_data['Name'].format(sub_id)
+        scope = role_data['AssignableScopes'][0].format(sub_id)
+        role_data['Name'] = role_fullname
+        role_data['AssignableScopes'][0] = scope
+        try:
+            # assume already exists, so try updating first
+            _azure('role', 'definition', 'update',
+                   '--role-definition', json.dumps(role_data))
+            log('Updated existing role {}', role_fullname)
+        except DoesNotExistAzureError:
+            # doesn't exist, so create
+            _azure('role', 'definition', 'create',
+                   '--role-definition', json.dumps(role_data))
+            log('Created new role {}', role_fullname)
+        known_roles[role_name] = role_fullname
+    kv().set('charm.azure.roles', known_roles)
+
+
 # Internal helpers
 
 
@@ -241,12 +268,21 @@ class AzureError(Exception):
         """
         if 'already exists' in message:
             return AlreadyExistsAzureError(message)
+        if 'Please provide' in message and 'an existing' in message:
+            return DoesNotExistAzureError(message)
         return AzureError(message)
 
 
 class AlreadyExistsAzureError(AzureError):
     """
     Meta-error subclass of AzureError representing something already existing.
+    """
+    pass
+
+
+class DoesNotExistAzureError(AzureError):
+    """
+    Meta-error subclass of AzureError representing something not existing.
     """
     pass
 
@@ -341,10 +377,10 @@ def _get_role(role_name):
         log('Ensuring role {}', role_fullname)
         _azure('role', 'definition', 'create',
                '--role-definition', json.dumps(role_data))
-    except AzureError as e:
-        if 'already exists' not in e.args[0]:
-            raise
+    except AlreadyExistsAzureError as e:
+        pass
     known_roles[role_name] = role_fullname
+    kv().set('charm.azure.roles', known_roles)
     return role_fullname
 
 
