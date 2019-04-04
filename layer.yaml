@@ -1,4 +1,4 @@
-repo: 'https://github.com/juju-solutions/layer-azure'
+repo: 'https://github.com/juju-solutions/charm-azure-integrator'
 includes:
   - 'layer:basic'
   - 'layer:status'

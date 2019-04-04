@@ -270,6 +270,8 @@ class AzureError(Exception):
             return AlreadyExistsAzureError(message)
         if 'Please provide' in message and 'an existing' in message:
             return DoesNotExistAzureError(message)
+        if 'No definition was found' in message:
+            return DoesNotExistAzureError(message)
         return AzureError(message)
 
 
@@ -377,7 +379,7 @@ def _get_role(role_name):
         log('Ensuring role {}', role_fullname)
         _azure('role', 'definition', 'create',
                '--role-definition', json.dumps(role_data))
-    except AlreadyExistsAzureError as e:
+    except AlreadyExistsAzureError:
         pass
     known_roles[role_name] = role_fullname
     kv().set('charm.azure.roles', known_roles)
