@@ -4,7 +4,8 @@
     "Description": "Manage disks for VMs",
     "Actions": [
         "Microsoft.Compute/Disks/*",
-        "Microsoft.Storage/storageAccounts/*"
+        "Microsoft.Storage/storageAccounts/*",
+        "Microsoft.Compute/virtualMachines/write"
     ],
     "AssignableScopes": [
         "/subscriptions/{}"
