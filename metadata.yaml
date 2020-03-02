@@ -10,6 +10,7 @@ maintainers: ['Cory Johns <johnsca@gmail.com>']
 series:
   - bionic
   - xenial
+  - focal
 tags: ['azure', 'native', 'integration']
 provides:
   clients:
