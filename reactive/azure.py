@@ -86,3 +86,8 @@ def handle_requests():
 @hook('upgrade-charm')
 def update_roles():
     layer.azure.update_roles()
+
+
+@hook('pre-series-upgrade')
+def pre_series_upgrade():
+    layer.status.blocked('Series upgrade in progress')
