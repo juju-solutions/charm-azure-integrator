@@ -139,15 +139,16 @@ def send_additional_metadata(request):
     Get additional info about the requesting instance via the API that isn't
     available from the metadata server.
     """
+    run_config = hookenv.config() or {}
     res_grp = _azure('group', 'show', '--name', request.resource_group)
     # hard-code most of these because with Juju, they're always the same
     # and the queries required to look them up are a PITA
     request.send_additional_metadata(
         resource_group_location=res_grp['location'],
-        vnet_name='juju-internal-network',
-        vnet_resource_group=request.resource_group,
-        subnet_name='juju-internal-subnet',
-        security_group_name='juju-internal-nsg',
+        vnet_name=run_config.get('vnetName') if run_config.get('vnetName') else 'juju-internal-network',
+        vnet_resource_group=run_config.get('vnetResourceGroup') if run_config.get('vnetResourceGroup') else request.resource_group,
+        subnet_name=run_config.get('subnetName') if run_config.get('subnetName') else 'juju-internal-subnet',
+        security_group_name=run_config.get('vnetSecurityGroup') if run_config.get('vnetSecurityGroup') else 'juju-internal-nsg',
     )
 
 

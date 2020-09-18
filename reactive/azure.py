@@ -47,7 +47,8 @@ def no_requests():
 @when_all('apt.installed.azure-cli',
           'charm.azure.creds.set',
           'charm.azure.initial-role-update',
-          'endpoint.clients.requests-pending')
+          'endpoint.clients.requests-pending',
+          'config.changed')
 def handle_requests():
     azure = endpoint_from_name('clients')
     try:
