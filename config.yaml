@@ -7,11 +7,11 @@ options:
   vnetResourceGroup:
     description:
       VnetName resource group to be passed via cloud-integration.
-    type: string                                                     
-    default: 'juju-default-rg'                                       
-  subnetName:                                                        
-    description:                                                     
-      Vnet's subnet to be used by azure cloud-integration.           
+    type: string
+    default: ''
+  subnetName:
+    description:
+      Vnet's subnet to be used by azure cloud-integration.
     type: string
     default: 'juju-internal-subnet'
   vnetSecurityGroup:
