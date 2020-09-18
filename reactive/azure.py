@@ -44,11 +44,15 @@ def no_requests():
     layer.status.active('ready')
 
 
+@when_any('config.changed')
+def rehandle_requests():
+    handle_requests()
+
+
 @when_all('apt.installed.azure-cli',
           'charm.azure.creds.set',
           'charm.azure.initial-role-update',
-          'endpoint.clients.requests-pending',
-          'config.changed')
+          'endpoint.clients.requests-pending')
 def handle_requests():
     azure = endpoint_from_name('clients')
     try:
