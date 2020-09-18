@@ -1,0 +1,15 @@
+{
+    "Name": "juju-charm-lb-manager-{}",
+    "IsCustom": true,
+    "Description": "Manage LBs for VMs",
+    "Actions": [
+        "Microsoft.Network/networkInterfaces/write",
+        "Microsoft.Network/virtualNetworks/read",
+        "Microsoft.Network/virtualNetworks/subnets/read",
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+        "Microsoft.Network/loadBalancers/*"
+    ],
+    "AssignableScopes": [
+        "/subscriptions/{}"
+    ]
+}

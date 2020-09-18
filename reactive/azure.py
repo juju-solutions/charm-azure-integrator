@@ -59,6 +59,8 @@ def handle_requests():
             layer.azure.send_additional_metadata(request)
             if request.instance_tags:
                 layer.azure.tag_instance(request)
+            if request.requested_loadbalancer_management:
+                layer.azure.enable_loadbalancer_management(request)
             if request.requested_instance_inspection:
                 layer.azure.enable_instance_inspection(request)
             if request.requested_network_management:

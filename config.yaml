@@ -1,4 +1,24 @@
 options:
+  vnetName:
+    description:
+      VnetName to be passed via cloud-integration.
+    type: string
+    default: 'juju-internal-network'
+  vnetResourceGroup:
+    description:
+      VnetName resource group to be passed via cloud-integration.
+    type: string                                                     
+    default: 'juju-default-rg'                                       
+  subnetName:                                                        
+    description:                                                     
+      Vnet's subnet to be used by azure cloud-integration.           
+    type: string
+    default: 'juju-internal-subnet'
+  vnetSecurityGroup:
+    description:
+      Default network sec group (NSG) to be used by azure cloud integration.
+    type: string
+    default: 'juju-internal-nsg'
   credentials:
     description: |
       The base64-encoded JSON credentials data, which must include the 'application-id',

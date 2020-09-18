@@ -179,6 +179,14 @@ def enable_network_management(request):
     _assign_role(request, StandardRole.NETWORK_MANAGER)
 
 
+def enable_loadbalancer_management(request):
+    """
+    Enable network management for the given application.
+    """
+    log('Enabling load balancer management')
+    _assign_role(request, _get_role('lb-manager'))
+
+
 def enable_security_management(request):
     """
     Enable security management for the given application.
