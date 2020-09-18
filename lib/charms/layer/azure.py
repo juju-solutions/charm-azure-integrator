@@ -186,6 +186,9 @@ def enable_loadbalancer_management(request):
     """
     log('Enabling load balancer management')
     _assign_role(request, _get_role('lb-manager'))
+    # In this case, we need to have permissions on both VM and network RGs
+    if hookenv.config('vnetResourceGroup') != request.resource_group:
+        _assign_role(request, _get_role('lb-manager'), hookenv.config('vnetName'))
 
 
 def enable_security_management(request):
@@ -395,14 +398,17 @@ def _get_role(role_name):
     return role_fullname
 
 
-def _assign_role(request, role):
+def _assign_role(request, role, resource_group=None):
     if isinstance(role, StandardRole):
         role = role.value
     msi = _get_msi(request.vm_id)
+    rg = request.resource_group
+    if resource_group is not None:
+        rg = resource_group
     try:
         _azure('role', 'assignment', 'create',
                '--assignee-object-id', msi,
-               '--resource-group', request.resource_group,
+               '--resource-group', rg,
                '--role', role)
     except AlreadyExistsAzureError:
         pass
