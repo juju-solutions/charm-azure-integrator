@@ -188,7 +188,7 @@ def enable_loadbalancer_management(request):
     _assign_role(request, _get_role('lb-manager'))
     # In this case, we need to have permissions on both VM and network RGs
     if hookenv.config('vnetResourceGroup') != request.resource_group:
-        _assign_role(request, _get_role('lb-manager'), hookenv.config('vnetName'))
+        _assign_role(request, _get_role('lb-manager'), hookenv.config('vnetResourceGroup'))
 
 
 def enable_security_management(request):
