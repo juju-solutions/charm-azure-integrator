@@ -139,15 +139,16 @@ def send_additional_metadata(request):
     Get additional info about the requesting instance via the API that isn't
     available from the metadata server.
     """
+    run_config = hookenv.config() or {}
     res_grp = _azure('group', 'show', '--name', request.resource_group)
     # hard-code most of these because with Juju, they're always the same
     # and the queries required to look them up are a PITA
     request.send_additional_metadata(
         resource_group_location=res_grp['location'],
-        vnet_name='juju-internal-network',
-        vnet_resource_group=request.resource_group,
-        subnet_name='juju-internal-subnet',
-        security_group_name='juju-internal-nsg',
+        vnet_name=run_config.get('vnetName') if run_config.get('vnetName') else 'juju-internal-network',
+        vnet_resource_group=run_config.get('vnetResourceGroup') if run_config.get('vnetResourceGroup') else request.resource_group,
+        subnet_name=run_config.get('subnetName') if run_config.get('subnetName') else 'juju-internal-subnet',
+        security_group_name=run_config.get('vnetSecurityGroup') if run_config.get('vnetSecurityGroup') else 'juju-internal-nsg',
     )
 
 
@@ -177,6 +178,17 @@ def enable_network_management(request):
     """
     log('Enabling network management')
     _assign_role(request, StandardRole.NETWORK_MANAGER)
+
+
+def enable_loadbalancer_management(request):
+    """
+    Enable load balancer management for the given application.
+    """
+    log('Enabling load balancer management')
+    _assign_role(request, _get_role('lb-manager'))
+    # In this case, we need to have permissions on both VM and network RGs
+    if hookenv.config('vnetResourceGroup') != request.resource_group:
+        _assign_role(request, _get_role('lb-manager'), hookenv.config('vnetResourceGroup'))
 
 
 def enable_security_management(request):
@@ -386,14 +398,17 @@ def _get_role(role_name):
     return role_fullname
 
 
-def _assign_role(request, role):
+def _assign_role(request, role, resource_group=None):
     if isinstance(role, StandardRole):
         role = role.value
     msi = _get_msi(request.vm_id)
+    rg = request.resource_group
+    if resource_group is not None:
+        rg = resource_group
     try:
         _azure('role', 'assignment', 'create',
                '--assignee-object-id', msi,
-               '--resource-group', request.resource_group,
+               '--resource-group', rg,
                '--role', role)
     except AlreadyExistsAzureError:
         pass
