@@ -45,11 +45,6 @@ def no_requests():
     layer.status.active('ready')
 
 
-@when_any('config.changed')
-def rehandle_requests():
-    handle_requests()
-
-
 @when_all('apt.installed.azure-cli',
           'charm.azure.creds.set',
           'charm.azure.initial-role-update',

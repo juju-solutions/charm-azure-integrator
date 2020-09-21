@@ -182,7 +182,7 @@ def enable_network_management(request):
 
 def enable_loadbalancer_management(request):
     """
-    Enable network management for the given application.
+    Enable load balancer management for the given application.
     """
     log('Enabling load balancer management')
     _assign_role(request, _get_role('lb-manager'))
