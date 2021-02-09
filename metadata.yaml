@@ -15,3 +15,5 @@ tags: ['azure', 'native', 'integration']
 provides:
   clients:
     interface: azure-integration
+  lb-consumers:
+    interface: loadbalancer
