@@ -309,6 +309,28 @@ def create_loadbalancer(request):
     _azure("network", *lb_create_args)
     components_created["lb"] = [request.name.value]
 
+    for front, back in request.port_mapping.values.items():
+        _azure(
+            "lb",
+            "rule",
+            "create",
+            "--name",
+            "{}-rule-{}-{}".format(request.name.value, front, back),
+            "--resource-group",
+            resource_group,
+            "--lb-name",
+            request.name.value,
+            "--frontend-port",
+            "{}".format(front),
+            "--backend-port",
+            "{}".format(back),
+            "--protocol",
+            request.protocol.value,
+        )
+        components_created["lb/rule"] = [
+            "{}-rule-{}-{}".format(request.name.value, front, back)
+        ]
+
     if request.health_checks.value:
         components_created["lb/probe"] = []
     for i, health_check in enumerate(request.health_checks.value):
