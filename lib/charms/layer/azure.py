@@ -219,26 +219,24 @@ def _validate_loadbalancer_request(request):
 
     :return: None
     """
-    if request.traffic_type.capitalize() not in ["All", "Udp", "Tcp"]:
-        raise LoadBalancerException("Invalid traffic type")
+    if request.protocol.value.capitalize() not in ["All", "Udp", "Tcp"]:
+        raise LoadBalancerException("Invalid protocol")
     else:
-        request.traffic_type = (
-            request.traffic_type.capitalize()
-        )  # TODO check if this is mutable
+        request.protocol.value = request.protocol.value.capitalize()
 
     chosen_algorithm = None
-    if request.algorithm == []:
-        chosen_algorithm = "Default"
+    if request.algorithm.value == []:
+        chosen_algorithm.value = "Default"
     else:
-        for algorithm in request.algorithm:
+        for algorithm in request.algorithm.value:
             if algorithm in ["Default", "SourceIP", "SourceIPProtocol"]:
                 chosen_algorithm = algorithm
                 break
         if not chosen_algorithm:
             raise LoadBalancerException("Invalid algorithm")
-    request.algorithm = chosen_algorithm  # TODO check this is mutable
+    request.algorithm.value = chosen_algorithm
 
-    if request.tls_termination:
+    if request.tls_termination.value:
         raise LoadBalancerException("TLS termination is not supported")
 
     return  # Success
@@ -260,31 +258,34 @@ def create_loadbalancer(request):
         "lb",
         "create",
         "--name",
-        request.name,
+        request.name.value,
         "--resource-group",
         resource_group,
     ]
 
     if request.public:
-        lb_create_args += ["--public-ip-address", "{}-public-ip".format(request.name)]
+        lb_create_args += [
+            "--public-ip-address",
+            "{}-public-ip".format(request.name.value),
+        ]
 
         _azure(
             "network",
             "public-ip",
             "create",
             "--name",
-            "{}-public-ip".format(request.name),
+            "{}-public-ip".format(request.name.value),
             "--resource-group",
             resource_group,
         )
-        components_created["public-ip"] = ["{}-public-ip".format(request.name)]
+        components_created["public-ip"] = ["{}-public-ip".format(request.name.value)]
 
-    if request.backend_address:
+    if request.backend_address.value:
         components_created["lb/address-pool"] = []
-        for i, backend_address in request.backend_address:
+        for i, backend_address in request.backend_address.value:
             lb_create_args += [
                 "--backend-pool-name",
-                "{}-ip-{}".format(request.name, i),
+                "{}-ip-{}".format(request.name.value, i),
             ]
             # nic = _get_nic_from_ip(backend_address, resource_group)
             _azure(
@@ -293,49 +294,51 @@ def create_loadbalancer(request):
                 "address-pool",
                 "create",
                 "--name",
-                "{}-ip-{}".format(request.name, i),
+                "{}-ip-{}".format(request.name.value, i),
                 "--resource-group",
                 resource_group,
                 "--lb-name",
-                request.name,
+                request.name.value,
                 "--backend-address",
                 backend_address,
             )
             components_created["lb/address-pool"].append(
-                "{}-ip-{}".format(request.name, i)
+                "{}-ip-{}".format(request.name.value, i)
             )
 
     _azure("network", *lb_create_args)
-    components_created["lb"] = [request.name]
+    components_created["lb"] = [request.name.value]
 
-    if request.health_checks:
+    if request.health_checks.value:
         components_created["lb/probe"] = []
-    for i, health_check in enumerate(request.health_checks):
+    for i, health_check in enumerate(request.health_checks.value):
         lb_probe_create_args = [
             "lb",
             "probe",
             "create",
             "--name",
-            "{}-probe-{}".format(request.name, i),
+            "{}-probe-{}".format(request.name.value, i),
             "--resource-group",
             resource_group,
             "--lb-name",
             request.name,
             "--protocol",
-            health_check.type,
+            health_check.type.value,
             "--port",
-            health_check.port,
+            health_check.port.value,
             "--interval",
-            health_check.interval,
+            health_check.interval.value,
             "--threshold",
-            health_check.retries,
+            health_check.retries.value,
         ]
 
         if health_check.path:
-            lb_probe_create_args += ["--path", health_check.path]
+            lb_probe_create_args += ["--path", health_check.path.value]
 
         _azure("network", *lb_probe_create_args)
-        components_created["lb/probe"].append("{}-probe-{}".format(request.name, i))
+        components_created["lb/probe"].append(
+            "{}-probe-{}".format(request.name.value, i)
+        )
 
         kv().set("charm.azure.lb-components", components_created)
 
