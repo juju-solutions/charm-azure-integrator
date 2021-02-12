@@ -33,7 +33,7 @@ def update_roles_on_install():
     layer.status.maintenance("loading roles")
     layer.azure.update_roles()
     set_flag("charm.azure.initial-role-update")
-    layer.status.active("ready")
+    layer.status.active("Ready")
 
 
 @when_all(
@@ -44,7 +44,7 @@ def update_roles_on_install():
 @when_not("endpoint.clients.requests-pending")
 def no_requests():
     layer.azure.cleanup()
-    layer.status.active("ready")
+    layer.status.active("Ready")
 
 
 @when_all(
@@ -98,9 +98,13 @@ def handle_requests():
 @when("endpoint.lb-consumers.requests_changed")
 def get_lb():
     lb_consumers = endpoint_from_name("lb-consumers")
+    az = endpoint_from_name("azure-integration")
+    rg = az.resource_group
     for request in lb_consumers.new_requests:
         try:
-            request.response.address = layer.azure.create_loadbalancer(request)
+            request.response.address = layer.azure.create_loadbalancer(
+                request, resource_group=rg
+            )
             request.response.success = True
         except layer.azure.LoadBalancerException as e:
             request.response.success = False

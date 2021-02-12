@@ -242,16 +242,13 @@ def _validate_loadbalancer_request(request):
     return  # Success
 
 
-def create_loadbalancer(request):
+def create_loadbalancer(request, resource_group):
     """
     Create an Azure LoadBalancer.
 
     :return: String address of load balancer
     """
     _validate_loadbalancer_request(request)
-
-    resource_group = hookenv.config("vnetResourceGroup")
-
     components_created = {}
 
     lb_create_args = [
@@ -367,13 +364,13 @@ def create_loadbalancer(request):
         return  # TODO lb address
 
 
-def remove_loadbalancer(request):
+def remove_loadbalancer(request, resource_group):
     """
     Remove an Azure LoadBalancer.
 
     :return: None
     """
-    resource_group = hookenv.config("vnetResourceGroup")
+    _validate_loadbalancer_request(request)
 
     components = kv().get("charm.azure.lb-components", {})
     for component, names in components.items():
@@ -644,7 +641,7 @@ def _assign_role(request, role, resource_group=None):
     if isinstance(role, StandardRole):
         role = role.value
     msi = _get_msi(request.vm_id)
-    rg = resource_group
+    rg = request.resource_group
     if resource_group is not None:
         rg = resource_group
     try:
