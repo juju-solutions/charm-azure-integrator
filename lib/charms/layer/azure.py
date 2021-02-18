@@ -239,7 +239,7 @@ def _validate_loadbalancer_request(request):
             raise LoadBalancerException("Invalid algorithm")
     serialized["algorithm"] = chosen_algorithm
 
-    if request.get("tls_termination"):
+    if serialized.get("tls_termination"):
         raise LoadBalancerException("TLS termination is not supported")
 
     return serialized
@@ -263,7 +263,7 @@ def create_loadbalancer(request, resource_group):
         resource_group,
     ]
 
-    if request.public:
+    if request.get("public"):
         lb_create_args += [
             "--public-ip-address",
             "{}-public-ip".format(request.get("name")),
@@ -311,6 +311,7 @@ def create_loadbalancer(request, resource_group):
 
     for front, back in request.get("port_mapping").items():
         _azure(
+            "network",
             "lb",
             "rule",
             "create",
@@ -362,9 +363,9 @@ def create_loadbalancer(request, resource_group):
             "{}-probe-{}".format(request.get("name"), i)
         )
 
-        kv().set("charm.azure.lb-components", components_created)
+    kv().set("charm.azure.lb-components", components_created)
 
-        return  # TODO lb address
+    return  # TODO lb address
 
 
 def remove_loadbalancer(request, resource_group):
