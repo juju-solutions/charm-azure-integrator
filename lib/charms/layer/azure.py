@@ -217,29 +217,32 @@ def _validate_loadbalancer_request(request):
     """
     Validate the incoming request.
 
-    :return: None
+    :return: Dictionary serialized request
     """
-    if request.protocol.value.capitalize() not in ["All", "Udp", "Tcp"]:
+    serialized = request.dump()
+    serialized["name"] = request.name
+
+    if serialized.get("protocol").capitalize() not in ["All", "Udp", "Tcp"]:
         raise LoadBalancerException("Invalid protocol")
     else:
-        request.protocol.value = request.protocol.value.capitalize()
+        serialized["protocol"] = serialized.get("protocol").capitalize()
 
     chosen_algorithm = None
-    if request.algorithm.value == []:
-        chosen_algorithm.value = "Default"
+    if serialized.get("algorithm") == []:
+        serialized["algorithm"] = "Default"
     else:
-        for algorithm in request.algorithm.value:
+        for algorithm in request.get("algorithm"):
             if algorithm in ["Default", "SourceIP", "SourceIPProtocol"]:
                 chosen_algorithm = algorithm
                 break
         if not chosen_algorithm:
             raise LoadBalancerException("Invalid algorithm")
-    request.algorithm.value = chosen_algorithm
+    serialized["algorithm"] = chosen_algorithm
 
-    if request.tls_termination.value:
+    if request.get("tls_termination"):
         raise LoadBalancerException("TLS termination is not supported")
 
-    return  # Success
+    return serialized
 
 
 def create_loadbalancer(request, resource_group):
@@ -248,14 +251,14 @@ def create_loadbalancer(request, resource_group):
 
     :return: String address of load balancer
     """
-    _validate_loadbalancer_request(request)
+    request = _validate_loadbalancer_request(request)
     components_created = {}
 
     lb_create_args = [
         "lb",
         "create",
         "--name",
-        request.name.value,
+        request.get("name"),
         "--resource-group",
         resource_group,
     ]
@@ -263,7 +266,7 @@ def create_loadbalancer(request, resource_group):
     if request.public:
         lb_create_args += [
             "--public-ip-address",
-            "{}-public-ip".format(request.name.value),
+            "{}-public-ip".format(request.get("name")),
         ]
 
         _azure(
@@ -271,18 +274,18 @@ def create_loadbalancer(request, resource_group):
             "public-ip",
             "create",
             "--name",
-            "{}-public-ip".format(request.name.value),
+            "{}-public-ip".format(request.get("name")),
             "--resource-group",
             resource_group,
         )
-        components_created["public-ip"] = ["{}-public-ip".format(request.name.value)]
+        components_created["public-ip"] = ["{}-public-ip".format(request.get("name"))]
 
-    if request.backend_address.value:
+    if request.get("backend_address"):
         components_created["lb/address-pool"] = []
-        for i, backend_address in request.backend_address.value:
+        for i, backend_address in request.get("backend_address"):
             lb_create_args += [
                 "--backend-pool-name",
-                "{}-ip-{}".format(request.name.value, i),
+                "{}-ip-{}".format(request.get("name"), i),
             ]
             # nic = _get_nic_from_ip(backend_address, resource_group)
             _azure(
@@ -291,72 +294,72 @@ def create_loadbalancer(request, resource_group):
                 "address-pool",
                 "create",
                 "--name",
-                "{}-ip-{}".format(request.name.value, i),
+                "{}-ip-{}".format(request.get("name"), i),
                 "--resource-group",
                 resource_group,
                 "--lb-name",
-                request.name.value,
+                request.get("name"),
                 "--backend-address",
                 backend_address,
             )
             components_created["lb/address-pool"].append(
-                "{}-ip-{}".format(request.name.value, i)
+                "{}-ip-{}".format(request.get("name"), i)
             )
 
     _azure("network", *lb_create_args)
-    components_created["lb"] = [request.name.value]
+    components_created["lb"] = [request.get("name")]
 
-    for front, back in request.port_mapping.values.items():
+    for front, back in request.get("port_mapping").items():
         _azure(
             "lb",
             "rule",
             "create",
             "--name",
-            "{}-rule-{}-{}".format(request.name.value, front, back),
+            "{}-rule-{}-{}".format(request.get("name"), front, back),
             "--resource-group",
             resource_group,
             "--lb-name",
-            request.name.value,
+            request.get("name"),
             "--frontend-port",
             "{}".format(front),
             "--backend-port",
             "{}".format(back),
             "--protocol",
-            request.protocol.value,
+            request.get("protocol"),
         )
         components_created["lb/rule"] = [
-            "{}-rule-{}-{}".format(request.name.value, front, back)
+            "{}-rule-{}-{}".format(request.get("name"), front, back)
         ]
 
-    if request.health_checks.value:
+    if request.get("health_checks"):
         components_created["lb/probe"] = []
-    for i, health_check in enumerate(request.health_checks.value):
+    for i, health_check in enumerate(request.get("health_checks")):
         lb_probe_create_args = [
             "lb",
             "probe",
             "create",
             "--name",
-            "{}-probe-{}".format(request.name.value, i),
+            "{}-probe-{}".format(request.get("name"), i),
             "--resource-group",
             resource_group,
             "--lb-name",
-            request.name,
+            request.get("name"),
             "--protocol",
-            health_check.type.value,
+            health_check.get("type"),
             "--port",
-            health_check.port.value,
+            health_check.get("port"),
             "--interval",
-            health_check.interval.value,
+            health_check.get("interval"),
             "--threshold",
-            health_check.retries.value,
+            health_check.get("retries"),
         ]
 
         if health_check.path:
-            lb_probe_create_args += ["--path", health_check.path.value]
+            lb_probe_create_args += ["--path", health_check.get("path")]
 
         _azure("network", *lb_probe_create_args)
         components_created["lb/probe"].append(
-            "{}-probe-{}".format(request.name.value, i)
+            "{}-probe-{}".format(request.get("name"), i)
         )
 
         kv().set("charm.azure.lb-components", components_created)
@@ -370,17 +373,18 @@ def remove_loadbalancer(request, resource_group):
 
     :return: None
     """
-    _validate_loadbalancer_request(request)
+    request = _validate_loadbalancer_request(request)
 
     components = kv().get("charm.azure.lb-components", {})
     for component, names in components.items():
         for name in names:
-            command = (
-                component.split("/")
-                + ["delete"]
-                + ["--resource-group", resource_group, "--name", name]
-            )
-            _azure("network", *command)
+            if name.startswith(request.get("name")):
+                command = (
+                    component.split("/")
+                    + ["delete"]
+                    + ["--resource-group", resource_group, "--name", name]
+                )
+                _azure("network", *command)
 
     kv().set("charm.azure.lb-components", {})
 
@@ -391,11 +395,16 @@ def enable_loadbalancer_management(request):
     """
     log("Enabling load balancer management")
     _assign_role(request, _get_role("lb-manager"))
-    # In this case, we need to have permissions on both VM and network RGs
-    if hookenv.config("vnetResourceGroup") != request.resource_group:
-        _assign_role(
-            request, _get_role("lb-manager"), hookenv.config("vnetResourceGroup")
-        )
+
+    rg = (
+        hookenv.config("vnetResourceGroup")
+        if hookenv.config("vnetResourceGroup")
+        else request.resource_group
+    )
+
+    # In this case, we need to have permissions on both VM and network RGs.
+    if rg != request.resource_group:
+        _assign_role(request, _get_role("lb-manager"), rg)
 
 
 def enable_security_management(request):
