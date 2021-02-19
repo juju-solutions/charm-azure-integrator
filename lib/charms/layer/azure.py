@@ -220,7 +220,7 @@ def _validate_loadbalancer_request(request):
     :return: Dictionary serialized request
     """
     serialized = request.dump()
-    serialized["name"] = request.name
+    serialized["name"] = "integrator-{}".format(request.name)
 
     if serialized.get("protocol").capitalize() not in ["All", "Udp", "Tcp"]:
         raise LoadBalancerException("Invalid protocol")
@@ -252,7 +252,21 @@ def create_loadbalancer(request, resource_group):
     :return: String address of load balancer
     """
     request = _validate_loadbalancer_request(request)
-    components_created = {}
+
+    resource_group_location = _azure("group", "show", "--name", resource_group).get(
+        "location"
+    )
+
+    resource_group = "{}-lb".format(resource_group)
+
+    _azure(
+        "group",
+        "create",
+        "--name",
+        resource_group,
+        "--location",
+        resource_group_location,
+    )
 
     lb_create_args = [
         "lb",
@@ -278,10 +292,8 @@ def create_loadbalancer(request, resource_group):
             "--resource-group",
             resource_group,
         )
-        components_created["public-ip"] = ["{}-public-ip".format(request.get("name"))]
 
     if request.get("backend_address"):
-        components_created["lb/address-pool"] = []
         for i, backend_address in request.get("backend_address"):
             lb_create_args += [
                 "--backend-pool-name",
@@ -302,12 +314,8 @@ def create_loadbalancer(request, resource_group):
                 "--backend-address",
                 backend_address,
             )
-            components_created["lb/address-pool"].append(
-                "{}-ip-{}".format(request.get("name"), i)
-            )
 
     _azure("network", *lb_create_args)
-    components_created["lb"] = [request.get("name")]
 
     for front, back in request.get("port_mapping").items():
         _azure(
@@ -328,12 +336,7 @@ def create_loadbalancer(request, resource_group):
             "--protocol",
             request.get("protocol"),
         )
-        components_created["lb/rule"] = [
-            "{}-rule-{}-{}".format(request.get("name"), front, back)
-        ]
 
-    if request.get("health_checks"):
-        components_created["lb/probe"] = []
     for i, health_check in enumerate(request.get("health_checks")):
         lb_probe_create_args = [
             "lb",
@@ -359,11 +362,6 @@ def create_loadbalancer(request, resource_group):
             lb_probe_create_args += ["--path", health_check.get("path")]
 
         _azure("network", *lb_probe_create_args)
-        components_created["lb/probe"].append(
-            "{}-probe-{}".format(request.get("name"), i)
-        )
-
-    kv().set("charm.azure.lb-components", components_created)
 
     return  # TODO lb address
 
@@ -376,18 +374,9 @@ def remove_loadbalancer(request, resource_group):
     """
     request = _validate_loadbalancer_request(request)
 
-    components = kv().get("charm.azure.lb-components", {})
-    for component, names in components.items():
-        for name in names:
-            if name.startswith(request.get("name")):
-                command = (
-                    component.split("/")
-                    + ["delete"]
-                    + ["--resource-group", resource_group, "--name", name]
-                )
-                _azure("network", *command)
+    resource_group = "{}-lb".format(resource_group)
 
-    kv().set("charm.azure.lb-components", {})
+    _azure("group", "delete", "--name", resource_group, "-y")
 
 
 def enable_loadbalancer_management(request):

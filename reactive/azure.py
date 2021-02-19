@@ -97,13 +97,13 @@ def handle_requests():
 
 @when("endpoint.lb-consumers.requests_changed")
 def get_lb():
+    azure = endpoint_from_name("clients")
+    resource_group = azure.resource_group
     lb_consumers = endpoint_from_name("lb-consumers")
-    az = endpoint_from_name("azure-integration")
-    rg = az.resource_group
     for request in lb_consumers.new_requests:
         try:
             request.response.address = layer.azure.create_loadbalancer(
-                request, resource_group=rg
+                request, resource_group
             )
             request.response.success = True
         except layer.azure.LoadBalancerException as e:
@@ -114,9 +114,11 @@ def get_lb():
 
 @when("endpoint.lb-consumers.TODO")
 def stop_lb():
+    azure = endpoint_from_name("clients")
+    resource_group = azure.resource_group
     lb_consumers = endpoint_from_name("lb-consumers")
     for request in lb_consumers.new_requests:
-        layer.azure.remove_loadbalancer(request)
+        layer.azure.remove_loadbalancer(request, resource_group)
 
 
 @hook("upgrade-charm")
