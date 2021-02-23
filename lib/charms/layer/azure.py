@@ -282,6 +282,13 @@ def create_loadbalancer(request, resource_group):
             "--public-ip-address",
             "{}-public-ip".format(request.get("name")),
         ]
+    else:
+        lb_create_args += [
+            "--vnet-name",
+            "juju-internal-network",
+            "--subnet",
+            "juju-internal-subnet",
+        ]
 
         _azure(
             "network",
@@ -315,7 +322,7 @@ def create_loadbalancer(request, resource_group):
                 backend_address,
             )
 
-    _azure("network", *lb_create_args)
+    lb_created = _azure("network", *lb_create_args)
 
     for front, back in request.get("port_mapping").items():
         _azure(
@@ -363,7 +370,10 @@ def create_loadbalancer(request, resource_group):
 
         _azure("network", *lb_probe_create_args)
 
-    return  # TODO lb address
+    if request.get("public"):
+        return  lb_created["loadBalancer"]["frontendIPConfigurations"][0]["properties"]["publicIPAddress"]
+    else:
+        return lb_created["loadBalancer"]["frontendIPConfigurations"][0]["properties"]["privateIPAddress"]
 
 
 def remove_loadbalancer(request, resource_group):
