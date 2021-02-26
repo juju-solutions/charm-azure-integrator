@@ -7,7 +7,7 @@ from enum import Enum
 from math import ceil, floor
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 
 import yaml
 
@@ -32,7 +32,15 @@ class StandardRole(Enum):
 
 
 class LoadBalancerException(BaseException):
-    pass
+    def __init__(self, message):
+        self.message = message
+        super().__init__(message)
+
+
+class LoadBalancerUnsupportedFeatureException(BaseException):
+    def __init__(self, message):
+        self.message = message
+        super().__init__(message)
 
 
 # When debugging hooks, for some reason HOME is set to /home/ubuntu, whereas
@@ -223,7 +231,9 @@ def _validate_loadbalancer_request(request):
     serialized["name"] = "integrator-{}".format(request.name)
 
     if serialized.get("protocol").capitalize() not in ["All", "Udp", "Tcp"]:
-        raise LoadBalancerException("Invalid protocol")
+        message = "Protocol '{}' is not supported".format(serialized.get("protocol"))
+        hookenv.log(message, hookenv.ERROR)
+        raise LoadBalancerUnsupportedFeatureException(message)
     else:
         serialized["protocol"] = serialized.get("protocol").capitalize()
 
@@ -231,21 +241,27 @@ def _validate_loadbalancer_request(request):
     if serialized.get("algorithm") == []:
         serialized["algorithm"] = "Default"
     else:
-        for algorithm in request.get("algorithm"):
+        for algorithm in serialized.get("algorithm"):
             if algorithm in ["Default", "SourceIP", "SourceIPProtocol"]:
                 chosen_algorithm = algorithm
                 break
         if not chosen_algorithm:
-            raise LoadBalancerException("Invalid algorithm")
+            message = "Algorithm '{}' is not supported".format(
+                serialized.get("algorithm")
+            )
+            hookenv.log(message, hookenv.ERROR)
+            raise LoadBalancerUnsupportedFeatureException(message)
     serialized["algorithm"] = chosen_algorithm
 
     if serialized.get("tls_termination"):
-        raise LoadBalancerException("TLS termination is not supported")
+        message = "TLS termination is not supported"
+        hookenv.log(message, hookenv.ERROR)
+        raise LoadBalancerUnsupportedFeatureException(message)
 
     return serialized
 
 
-def create_loadbalancer(request, resource_group):
+def create_loadbalancer(request):
     """
     Create an Azure LoadBalancer.
 
@@ -253,11 +269,11 @@ def create_loadbalancer(request, resource_group):
     """
     request = _validate_loadbalancer_request(request)
 
-    resource_group_location = _azure("group", "show", "--name", resource_group).get(
-        "location"
-    )
+    resource_group_location = _azure(
+        "group", "show", "--name", _get_resource_group()
+    ).get("location")
 
-    resource_group = "{}-lb".format(resource_group)
+    resource_group = "{}-lb".format(_get_resource_group())
 
     _azure(
         "group",
@@ -285,9 +301,9 @@ def create_loadbalancer(request, resource_group):
     else:
         lb_create_args += [
             "--vnet-name",
-            "juju-internal-network",
+            "juju-internal-network",  # TODO find this.
             "--subnet",
-            "juju-internal-subnet",
+            "juju-internal-subnet",  # TODO find this.
         ]
 
         _azure(
@@ -371,12 +387,20 @@ def create_loadbalancer(request, resource_group):
         _azure("network", *lb_probe_create_args)
 
     if request.get("public"):
-        return  lb_created["loadBalancer"]["frontendIPConfigurations"][0]["properties"]["publicIPAddress"]
+        ip = lb_created["loadBalancer"]["frontendIPConfigurations"][0]["properties"][
+            "publicIPAddress"
+        ]
+        hookenv.log("LB created with public IP {}".format(ip), hookenv.INFO)
+        return ip
     else:
-        return lb_created["loadBalancer"]["frontendIPConfigurations"][0]["properties"]["privateIPAddress"]
+        ip = lb_created["loadBalancer"]["frontendIPConfigurations"][0]["properties"][
+            "privateIPAddress"
+        ]
+        hookenv.log("LB created with private IP {}".format(ip), hookenv.INFO)
+        return ip
 
 
-def remove_loadbalancer(request, resource_group):
+def remove_loadbalancer(request):
     """
     Remove an Azure LoadBalancer.
 
@@ -384,9 +408,10 @@ def remove_loadbalancer(request, resource_group):
     """
     request = _validate_loadbalancer_request(request)
 
-    resource_group = "{}-lb".format(resource_group)
+    resource_group = "{}-lb".format(_get_resource_group())
 
     _azure("group", "delete", "--name", resource_group, "-y")
+    hookenv.log("LB {} removed".format(resource_group), hookenv.INFO)
 
 
 def enable_loadbalancer_management(request):
@@ -644,6 +669,31 @@ def _get_role(role_name):
     known_roles[role_name] = role_fullname
     kv().set("charm.azure.roles", known_roles)
     return role_fullname
+
+
+def _get_resource_group():
+    """
+    Filter resource group from metadata.
+    """
+    return _get_metadata()["compute"]["resourceGroupName"]
+
+
+def _get_metadata():
+    """
+    Return an object populated from the metadata server.
+    """
+    cache = kv().get("charm.azure.instance.metadata", None)
+    if cache:
+        return cache
+    else:
+        r = Request(
+            "http://169.254.169.254/metadata/instance?api-version=2017-12-01",
+            headers={"Metadata": "true"},
+        )
+        with urlopen(r) as f:
+            md = json.loads(f.read(2048).decode("utf8").strip())
+            kv().set("charm.azure.instance.metadata", md)
+            return md
 
 
 def _assign_role(request, role, resource_group=None):
