@@ -4,12 +4,10 @@ from charms.reactive import (
     when_all,
     when_any,
     when_not,
-    when,
     set_flag,
     toggle_flag,
     clear_flag,
     hook,
-    hookenv,
 )
 from charms.reactive.relations import endpoint_from_name
 
@@ -95,30 +93,29 @@ def handle_requests():
         )
 
 
-@when("endpoint.lb-consumers.requests_changed")
+@when_any("endpoint.lb-consumers.joined", "endpoint.lb-consumers.changed")
 def get_lb():
-    azure = endpoint_from_name("clients")
-    resource_group = azure.resource_group
     lb_consumers = endpoint_from_name("lb-consumers")
     for request in lb_consumers.new_requests:
         try:
-            request.response.address = layer.azure.create_loadbalancer(
-                request, resource_group
-            )
-            request.response.success = True
+            request.response.address = layer.azure.create_loadbalancer(request)
         except layer.azure.LoadBalancerException as e:
-            request.response.success = False
-            request.response.message = e.message
+            request.response.error = request.response.error_types.provider_error
+            request.response.error_message = e.message
+        except layer.azure.LoadBalancerUnsupportedFeatureException as e:
+            request.response.error = request.response.error_types.unsupported
+            request.response.error_message = e.message
+        else:
+            request.response.error = None
+
         lb_consumers.send_response(request)
 
 
-@when("endpoint.lb-consumers.TODO")
+@when_any("endpoint.lb-consumers.departed", "endpoint.lb-consumers.broken")
 def stop_lb():
-    azure = endpoint_from_name("clients")
-    resource_group = azure.resource_group
     lb_consumers = endpoint_from_name("lb-consumers")
     for request in lb_consumers.new_requests:
-        layer.azure.remove_loadbalancer(request, resource_group)
+        layer.azure.remove_loadbalancer(request)
 
 
 @hook("upgrade-charm")
