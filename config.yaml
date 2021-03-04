@@ -11,6 +11,12 @@ options:
       This config must be set at deployment and cannot be changed later.
     type: string
     default: ''
+  resourceGroup:
+    description:
+      The resource group this charm is running in. Used to scope cluster roles
+      to the resource group.
+    type: string
+    default: ''
   subnetName:
     description:
       Vnet's subnet to be used by azure cloud-integration.
