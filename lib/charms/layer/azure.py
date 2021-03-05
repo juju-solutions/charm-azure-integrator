@@ -408,13 +408,11 @@ def _assign_role(request, role, resource_group=None):
     if isinstance(role, StandardRole):
         role = role.value
     msi = _get_msi(request.vm_id)
-    rg = request.resource_group
-    if resource_group is not None:
-        rg = resource_group
+    assignable_scope = kv().get('charm.azure.scope-id')
     try:
         _azure('role', 'assignment', 'create',
                '--assignee-object-id', msi,
-               '--resource-group', rg,
-               '--role', role)
+               '--role', role,
+               '--scope', assignable_scope)
     except AlreadyExistsAzureError:
         pass
