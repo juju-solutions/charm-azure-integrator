@@ -116,8 +116,7 @@ def login_cli(creds_data, resource_group):
                '-u', app_id,
                '-p', app_pass,
                '-t', tenant_id)
-        # cache the subscription ID for use in roles
-        kv().set('charm.azure.sub-id', sub_id)
+        # cache the assignable scope for use in roles
         kv().set('charm.azure.scope-id', assignable_scope)
     except AzureError as e:
         # redact the credential info from the exception message
@@ -254,7 +253,7 @@ def update_roles():
     for role_file in Path('files/roles/').glob('*.json'):
         role_name = role_file.stem
         role_data = json.loads(role_file.read_text())
-        role_fullname = role_data['Name'].format(sub_id)
+        role_fullname = role_data['Name'].format(assignable_scope)
         scope = role_data['AssignableScopes'][0].format(assignable_scope)
         role_data['Name'] = role_fullname
         role_data['AssignableScopes'][0] = scope
@@ -387,11 +386,10 @@ def _get_role(role_name):
     known_roles = kv().get('charm.azure.roles', {})
     if role_name in known_roles:
         return known_roles[role_name]
-    sub_id = kv().get('charm.azure.sub-id')
     assignable_scope = kv().get('charm.azure.scope-id')
     role_file = Path('files/roles/{}.json'.format(role_name))
     role_data = json.loads(role_file.read_text())
-    role_fullname = role_data['Name'].format(sub_id)
+    role_fullname = role_data['Name'].format(assignable_scope)
 
     role_data['Name'] = role_fullname
     role_data['AssignableScopes'][0] = assignable_scope
