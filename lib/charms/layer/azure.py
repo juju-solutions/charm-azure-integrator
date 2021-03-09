@@ -21,6 +21,9 @@ ENTITY_PREFIX = "charm.azure"
 MODEL_UUID = os.environ["JUJU_MODEL_UUID"]
 MAX_ROLE_NAME_LEN = 64
 MAX_POLICY_NAME_LEN = 128
+SUPPORTED_LB_PROTOS = ["udp", "tcp"]
+SUPPORTED_LB_ALGS = ["Default", "SourceIP", "SourceIPProtocol"]
+SUPPORTED_LB_HC_PROTOS = ["http", "https", "tcp"]
 
 
 class StandardRole(Enum):
@@ -38,9 +41,10 @@ class LoadBalancerException(BaseException):
 
 
 class LoadBalancerUnsupportedFeatureException(BaseException):
-    def __init__(self, message):
-        self.message = message
-        super().__init__(message)
+    def __init__(self, error_fields):
+        self.error_fields = error_fields
+        self.message = str(error_fields)
+        super().__init__(self.message)
 
 
 # When debugging hooks, for some reason HOME is set to /home/ubuntu, whereas
@@ -201,7 +205,7 @@ def tag_instance(request):
         *[
             "tags.{}={}".format(tag, value)
             for tag, value in request.instance_tags.items()
-        ]
+        ],
     )
 
 
@@ -221,44 +225,56 @@ def enable_network_management(request):
     _assign_role(request, StandardRole.NETWORK_MANAGER)
 
 
+def _lb_name(request):
+    """
+    Normalize and return the name of a LB request.
+    """
+    return "integrator-{}-{}".format(request.name, request.id)
+
+
+def _lb_algo(request):
+    """
+    Choose a supported algorithm for the request.
+    """
+    if not request.algorithm:
+        return "Default"
+    for supported in SUPPORTED_LB_ALGS:
+        if supported in request.algorithm:
+            return supported
+    return None
+
+
 def _validate_loadbalancer_request(request):
     """
     Validate the incoming request.
 
-    :return: Dictionary serialized request
+    :return: None
     """
-    serialized = request.dump()
-    serialized["name"] = "integrator-{}".format(request.name)
+    error_fields = {}
+    if request.protocol.value not in SUPPORTED_LB_PROTOS:
+        error_fields["protocol"] = "Must be one of: {}".format(
+            ", ".join(SUPPORTED_LB_PROTOS)
+        )
 
-    if serialized.get("protocol").capitalize() not in ["All", "Udp", "Tcp"]:
-        message = "Protocol '{}' is not supported".format(serialized.get("protocol"))
-        hookenv.log(message, hookenv.ERROR)
-        raise LoadBalancerUnsupportedFeatureException(message)
-    else:
-        serialized["protocol"] = serialized.get("protocol").capitalize()
+    if not _lb_algo(request):
+        error_fields["algorithm"] = "Must be one of: {}".format(
+            ", ".join(SUPPORTED_LB_ALGS)
+        )
 
-    chosen_algorithm = None
-    if serialized.get("algorithm") == []:
-        serialized["algorithm"] = "Default"
-    else:
-        for algorithm in serialized.get("algorithm"):
-            if algorithm in ["Default", "SourceIP", "SourceIPProtocol"]:
-                chosen_algorithm = algorithm
-                break
-        if not chosen_algorithm:
-            message = "Algorithm '{}' is not supported".format(
-                serialized.get("algorithm")
+    if request.tls_termination:
+        error_fields["tls_termination"] = "Not yet supported"
+
+    for i, hc in enumerate(request.health_checks):
+        if hc.protocol.value not in SUPPORTED_LB_HC_PROTOS:
+            error_fields["hc[{}].protocol".format(i)] = "Must be one of: {}".format(
+                ", ".join(SUPPORTED_LB_PROTOS)
             )
-            hookenv.log(message, hookenv.ERROR)
-            raise LoadBalancerUnsupportedFeatureException(message)
-    serialized["algorithm"] = chosen_algorithm
+        if hc.path and hc.protocol.value not in ("http", "https"):
+            error_fields["hc[{}].path".format(i)] = "Only valid with http(s) protocol"
 
-    if serialized.get("tls_termination"):
-        message = "TLS termination is not supported"
-        hookenv.log(message, hookenv.ERROR)
-        raise LoadBalancerUnsupportedFeatureException(message)
-
-    return serialized
+    if error_fields:
+        hookenv.log("Unsupported features: {}".format(error_fields), hookenv.ERROR)
+        raise LoadBalancerUnsupportedFeatureException(error_fields)
 
 
 def create_loadbalancer(request):
@@ -267,13 +283,14 @@ def create_loadbalancer(request):
 
     :return: String address of load balancer
     """
-    request = _validate_loadbalancer_request(request)
-
-    resource_group_location = _azure(
-        "group", "show", "--name", _get_resource_group()
-    ).get("location")
+    _validate_loadbalancer_request(request)
 
     resource_group = "{}-lb".format(_get_resource_group())
+    resource_group_location = _azure("group", "show", "--name", resource_group).get(
+        "location"
+    )
+
+    model_tag = "juju-model-uuid=" + MODEL_UUID
 
     _azure(
         "group",
@@ -282,21 +299,31 @@ def create_loadbalancer(request):
         resource_group,
         "--location",
         resource_group_location,
+        "--tags",
+        model_tag,
     )
+
+    lb_name = _lb_name(request)
+    lb_pip_name = lb_name + "-public-ip"
+    lb_pool_name = lb_name + "-pool"
 
     lb_create_args = [
         "lb",
         "create",
         "--name",
-        request.get("name"),
+        lb_name,
         "--resource-group",
         resource_group,
+        "--backend-pool-name",
+        lb_pool_name,
+        "--tags",
+        model_tag,
     ]
 
-    if request.get("public"):
+    if request.public:
         lb_create_args += [
             "--public-ip-address",
-            "{}-public-ip".format(request.get("name")),
+            lb_pip_name,
         ]
     else:
         lb_create_args += [
@@ -306,87 +333,89 @@ def create_loadbalancer(request):
             "juju-internal-subnet",  # TODO find this.
         ]
 
+    lb_created = _azure("network", *lb_create_args)
+
+    if request.public:
         _azure(
             "network",
             "public-ip",
             "create",
             "--name",
-            "{}-public-ip".format(request.get("name")),
+            lb_pip_name,
             "--resource-group",
             resource_group,
+            "--tags",
+            model_tag,
         )
 
-    if request.get("backend_address"):
-        for i, backend_address in request.get("backend_address"):
-            lb_create_args += [
-                "--backend-pool-name",
-                "{}-ip-{}".format(request.get("name"), i),
-            ]
-            # nic = _get_nic_from_ip(backend_address, resource_group)
-            _azure(
-                "network",
-                "lb",
-                "address-pool",
-                "create",
-                "--name",
-                "{}-ip-{}".format(request.get("name"), i),
-                "--resource-group",
-                resource_group,
-                "--lb-name",
-                request.get("name"),
-                "--backend-address",
-                backend_address,
-            )
+    backend_args = []
+    for i, backend in enumerate(request.backends):
+        backend_args += [
+            "--backend-address",
+            "name=addr{}".format(i),
+            "ip-address={}".format(backend),
+        ]
+    _azure(
+        "network",
+        "lb",
+        "address-pool",
+        "create",
+        "--name",
+        lb_pool_name,
+        "--resource-group",
+        resource_group,
+        "--lb-name",
+        lb_name,
+        *backend_args,
+    )
 
-    lb_created = _azure("network", *lb_create_args)
-
-    for front, back in request.get("port_mapping").items():
+    for front, back in request.port_mapping.items():
         _azure(
             "network",
             "lb",
             "rule",
             "create",
             "--name",
-            "{}-rule-{}-{}".format(request.get("name"), front, back),
+            "{}-rule-{}-{}".format(lb_name, front, back),
             "--resource-group",
             resource_group,
             "--lb-name",
-            request.get("name"),
+            lb_name,
             "--frontend-port",
-            "{}".format(front),
+            str(front),
             "--backend-port",
-            "{}".format(back),
+            str(back),
             "--protocol",
-            request.get("protocol"),
+            request.protocol.value.capitalize(),
         )
 
-    for i, health_check in enumerate(request.get("health_checks")):
+    for i, health_check in enumerate(request.health_checks):
         lb_probe_create_args = [
             "lb",
             "probe",
             "create",
             "--name",
-            "{}-probe-{}".format(request.get("name"), i),
+            "{}-probe-{}".format(lb_name, i),
             "--resource-group",
             resource_group,
             "--lb-name",
-            request.get("name"),
+            lb_name,
             "--protocol",
-            health_check.get("type"),
+            health_check.protocol.value.capitalize(),
             "--port",
-            health_check.get("port"),
+            health_check.port,
             "--interval",
-            health_check.get("interval"),
+            health_check.interval,
             "--threshold",
             health_check.get("retries"),
         ]
 
         if health_check.path:
-            lb_probe_create_args += ["--path", health_check.get("path")]
+            lb_probe_create_args += ["--path", health_check.path]
 
         _azure("network", *lb_probe_create_args)
 
-    if request.get("public"):
+    if request.public:
         ip = lb_created["loadBalancer"]["frontendIPConfigurations"][0]["properties"][
             "publicIPAddress"
         ]
@@ -402,16 +431,56 @@ def create_loadbalancer(request):
 
 def remove_loadbalancer(request):
     """
-    Remove an Azure LoadBalancer.
+    Remove a single load balancer.
 
     :return: None
     """
-    request = _validate_loadbalancer_request(request)
+    resource_group = "{}-lb".format(_get_resource_group())
+    # NB: Deleting the LB itself deletes any resources directly associated with it.
+    lb_name = _lb_name(request)
+    lb_pip_name = lb_name + "-public-ip"
+    commands = [
+        (
+            "network",
+            "lb",
+            "delete",
+            "--name",
+            lb_name,
+            "--resource-group",
+            resource_group,
+        ),
+        (
+            "network",
+            "public-ip",
+            "delete",
+            "--name",
+            lb_pip_name,
+            "--resource-group",
+            resource_group,
+        ),
+    ]
+    for command in commands:
+        try:
+            _azure(*command)
+        except DoesNotExistAzureError:
+            pass
 
+
+def remove_loadbalancer_group():
+    """
+    Remove the entire resource group for LBs.
+
+    This will clean up anything still in that group, as well.
+
+    :return: None
+    """
     resource_group = "{}-lb".format(_get_resource_group())
 
-    _azure("group", "delete", "--name", resource_group, "-y")
-    hookenv.log("LB {} removed".format(resource_group), hookenv.INFO)
+    try:
+        _azure("group", "delete", "--name", resource_group, "-y")
+        hookenv.log("Resource group {} removed".format(resource_group), hookenv.INFO)
+    except DoesNotExistAzureError:
+        pass
 
 
 def enable_loadbalancer_management(request):
@@ -535,6 +604,8 @@ class AzureError(Exception):
         if "Please provide" in message and "an existing" in message:
             return DoesNotExistAzureError(message)
         if "No definition was found" in message:
+            return DoesNotExistAzureError(message)
+        if "could not be found" in message:
             return DoesNotExistAzureError(message)
         return AzureError(message)
 
