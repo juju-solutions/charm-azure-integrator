@@ -116,7 +116,9 @@ def manage_lbs():
 
 @hook("stop")
 def cleanup():
-    layer.azure.remove_loadbalancer_group()
+    lb_consumers = endpoint_from_name("lb-consumers")
+    for request in lb_consumers.all_requests + lb_consumers.removed_requests:
+        layer.azure.remove_loadbalancer(request)
 
 
 @hook("upgrade-charm")

@@ -285,23 +285,9 @@ def create_loadbalancer(request):
     """
     _validate_loadbalancer_request(request)
 
-    resource_group = "{}-lb".format(_get_resource_group())
-    resource_group_location = _azure("group", "show", "--name", resource_group).get(
-        "location"
-    )
+    resource_group = _get_resource_group()
 
     model_tag = "juju-model-uuid=" + MODEL_UUID
-
-    _azure(
-        "group",
-        "create",
-        "--name",
-        resource_group,
-        "--location",
-        resource_group_location,
-        "--tags",
-        model_tag,
-    )
 
     lb_name = _lb_name(request)
     lb_pip_name = lb_name + "-public-ip"
@@ -464,23 +450,6 @@ def remove_loadbalancer(request):
             _azure(*command)
         except DoesNotExistAzureError:
             pass
-
-
-def remove_loadbalancer_group():
-    """
-    Remove the entire resource group for LBs.
-
-    This will clean up anything still in that group, as well.
-
-    :return: None
-    """
-    resource_group = "{}-lb".format(_get_resource_group())
-
-    try:
-        _azure("group", "delete", "--name", resource_group, "-y")
-        hookenv.log("Resource group {} removed".format(resource_group), hookenv.INFO)
-    except DoesNotExistAzureError:
-        pass
 
 
 def enable_loadbalancer_management(request):
