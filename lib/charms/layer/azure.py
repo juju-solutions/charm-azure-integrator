@@ -421,9 +421,10 @@ def remove_loadbalancer(request):
 
     :return: None
     """
-    resource_group = "{}-lb".format(_get_resource_group())
+    resource_group = _get_resource_group()
     # NB: Deleting the LB itself deletes any resources directly associated with it.
     lb_name = _lb_name(request)
+    # However, the public IP isn't directly associated with the LB.
     lb_pip_name = lb_name + "-public-ip"
     commands = [
         (
