@@ -93,8 +93,8 @@ def handle_requests():
         )
 
 
-@when_any("endpoint.lb-consumers.joined", "endpoint.lb-consumers.changed")
-def get_lb():
+@when_any("endpoint.lb-consumers.requests_changed")
+def manage_lbs():
     lb_consumers = endpoint_from_name("lb-consumers")
     for request in lb_consumers.new_requests:
         try:
@@ -104,18 +104,19 @@ def get_lb():
             request.response.error_message = e.message
         except layer.azure.LoadBalancerUnsupportedFeatureException as e:
             request.response.error = request.response.error_types.unsupported
-            request.response.error_message = e.message
+            request.response.error_fields = e.error_fields
         else:
             request.response.error = None
 
         lb_consumers.send_response(request)
 
-
-@when_any("endpoint.lb-consumers.departed", "endpoint.lb-consumers.broken")
-def stop_lb():
-    lb_consumers = endpoint_from_name("lb-consumers")
-    for request in lb_consumers.new_requests:
+    for request in lb_consumers.removed_requests:
         layer.azure.remove_loadbalancer(request)
+
+
+@hook("stop")
+def cleanup():
+    layer.azure.remove_loadbalancer_group()
 
 
 @hook("upgrade-charm")
