@@ -116,7 +116,11 @@ def manage_lbs():
 
 @hook("stop")
 def cleanup():
-    layer.azure.remove_loadbalancer_group()
+    lb_consumers = endpoint_from_name("lb-consumers")
+    # These are expected to both always be empty lists (since the relations should have
+    # already been removed by this point), but we do this anyway JIC.
+    for request in lb_consumers.all_requests + lb_consumers.removed_requests:
+        layer.azure.remove_loadbalancer(request)
 
 
 @hook("upgrade-charm")
