@@ -382,9 +382,9 @@ def create_loadbalancer(request):
             "--lb-name",
             lb_name,
             "--frontend-port",
-            str(front),
+            front,
             "--backend-port",
-            str(back),
+            back,
             "--protocol",
             request.protocol.value.capitalize(),
         )
@@ -407,7 +407,7 @@ def create_loadbalancer(request):
             "--interval",
             health_check.interval,
             "--threshold",
-            health_check.get("retries"),
+            health_check.retries,
         ]
 
         if health_check.path:
@@ -645,7 +645,7 @@ def _azure(cmd, *args, return_stderr=False):
     Call the azure-cli tool.
     """
     cmd = ["az", cmd]
-    cmd.extend(args)
+    cmd.extend(str(arg) for arg in args)
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout = result.stdout.decode("utf8").strip()
     stderr = result.stderr.decode("utf8").strip()
