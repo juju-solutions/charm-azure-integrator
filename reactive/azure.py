@@ -97,21 +97,28 @@ def handle_requests():
 def manage_lbs():
     lb_consumers = endpoint_from_name("lb-consumers")
     for request in lb_consumers.new_requests:
-        try:
-            request.response.address = layer.azure.create_loadbalancer(request)
-        except layer.azure.LoadBalancerException as e:
-            request.response.error = request.response.error_types.provider_error
-            request.response.error_message = e.message
-        except layer.azure.LoadBalancerUnsupportedFeatureException as e:
-            request.response.error = request.response.error_types.unsupported
-            request.response.error_fields = e.error_fields
-        else:
-            request.response.error = None
-
+        _create_lb(request)
         lb_consumers.send_response(request)
 
     for request in lb_consumers.removed_requests:
         layer.azure.remove_loadbalancer(request)
+
+
+def _create_lb(request):
+    request.response.error = None
+    request.response.error_message = None
+    request.response.error_fields = {}
+    try:
+        request.response.address = layer.azure.create_loadbalancer(request)
+        if not request.response.address:
+            request.response.error = request.response.error_types.provider_error
+            request.response.error_message = "no address returned by provider"
+    except layer.azure.LoadBalancerException as e:
+        request.response.error = request.response.error_types.provider_error
+        request.response.error_message = e.message
+    except layer.azure.LoadBalancerUnsupportedFeatureException as e:
+        request.response.error = request.response.error_types.unsupported
+        request.response.error_fields = e.error_fields
 
 
 @hook("stop")
@@ -126,6 +133,11 @@ def cleanup():
 @hook("upgrade-charm")
 def update_roles():
     layer.azure.update_roles()
+
+    lb_consumers = endpoint_from_name("lb-consumers")
+    for request in lb_consumers.all_requests:
+        _create_lb(request)
+        lb_consumers.send_response(request)
 
 
 @hook("pre-series-upgrade")

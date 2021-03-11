@@ -24,6 +24,8 @@ MAX_POLICY_NAME_LEN = 128
 SUPPORTED_LB_PROTOS = ["udp", "tcp"]
 SUPPORTED_LB_ALGS = ["Default", "SourceIP", "SourceIPProtocol"]
 SUPPORTED_LB_HC_PROTOS = ["http", "https", "tcp"]
+LB_NAME = "integrator-{request.id}"
+LB_POOL_NAME = "integrator-{request.id}-pool"
 
 
 class StandardRole(Enum):
@@ -225,13 +227,6 @@ def enable_network_management(request):
     _assign_role(request, StandardRole.NETWORK_MANAGER)
 
 
-def _lb_name(request):
-    """
-    Normalize and return the name of a LB request.
-    """
-    return "integrator-{}-{}".format(request.name, request.id)
-
-
 def _lb_algo(request):
     """
     Choose a supported algorithm for the request.
@@ -289,9 +284,8 @@ def create_loadbalancer(request):
 
     model_tag = "juju-model-uuid=" + MODEL_UUID
 
-    lb_name = _lb_name(request)
-    lb_pip_name = lb_name + "-public-ip"
-    lb_pool_name = lb_name + "-pool"
+    lb_name = LB_NAME.format(request=request)
+    lb_pool_name = LB_POOL_NAME.format(request=request)
 
     lb_create_args = [
         "lb",
@@ -303,13 +297,13 @@ def create_loadbalancer(request):
         "--backend-pool-name",
         lb_pool_name,
         "--tags",
-        model_tag,
+        model_tag + ",request-name=" + request.name,
     ]
 
     if request.public:
         lb_create_args += [
-            "--public-ip-address",
-            lb_pip_name,
+            "--public-ip-address-allocation",
+            "Static",
         ]
     else:
         lb_create_args += [
@@ -319,20 +313,7 @@ def create_loadbalancer(request):
             "juju-internal-subnet",  # TODO find this.
         ]
 
-    lb_created = _azure("network", *lb_create_args)
-
-    if request.public:
-        _azure(
-            "network",
-            "public-ip",
-            "create",
-            "--name",
-            lb_pip_name,
-            "--resource-group",
-            resource_group,
-            "--tags",
-            model_tag,
-        )
+    _azure("network", *lb_create_args)
 
     backend_args = []
     for i, backend in enumerate(request.backends):
@@ -401,18 +382,21 @@ def create_loadbalancer(request):
 
         _azure("network", *lb_probe_create_args)
 
-    if request.public:
-        ip = lb_created["loadBalancer"]["frontendIPConfigurations"][0]["properties"][
-            "publicIPAddress"
-        ]
-        hookenv.log("LB created with public IP {}".format(ip), hookenv.INFO)
-        return ip
-    else:
-        ip = lb_created["loadBalancer"]["frontendIPConfigurations"][0]["properties"][
-            "privateIPAddress"
-        ]
-        hookenv.log("LB created with private IP {}".format(ip), hookenv.INFO)
-        return ip
+    role = "public" if request.public else "private"
+    query = "frontendIpConfigurations[0].{}IpAddress.ipAddress".format(role)
+    ip = _azure(
+        "network",
+        "lb",
+        "show",
+        "--name",
+        lb_name,
+        "--resource-group",
+        resource_group,
+        "--query",
+        query,
+    )
+    hookenv.log("LB created with {} IP {}".format(role, ip), hookenv.INFO)
+    return ip
 
 
 def remove_loadbalancer(request):
@@ -423,34 +407,18 @@ def remove_loadbalancer(request):
     """
     resource_group = _get_resource_group()
     # NB: Deleting the LB itself deletes any resources directly associated with it.
-    lb_name = _lb_name(request)
-    # However, the public IP isn't directly associated with the LB.
-    lb_pip_name = lb_name + "-public-ip"
-    commands = [
-        (
+    try:
+        _azure(
             "network",
             "lb",
             "delete",
             "--name",
-            lb_name,
+            LB_NAME.format(request=request),
             "--resource-group",
             resource_group,
-        ),
-        (
-            "network",
-            "public-ip",
-            "delete",
-            "--name",
-            lb_pip_name,
-            "--resource-group",
-            resource_group,
-        ),
-    ]
-    for command in commands:
-        try:
-            _azure(*command)
-        except DoesNotExistAzureError:
-            pass
+        )
+    except DoesNotExistAzureError:
+        pass
 
 
 def enable_loadbalancer_management(request):
