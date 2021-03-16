@@ -1,37 +1,46 @@
 import json
 
 import pytest
+import requests
 
-from pytest_operator import OperatorTest
+
+@pytest.mark.abort_on_fail
+async def test_build_and_deploy(ops_test, lb_charms):
+    if {"azure-integrator", "lb-consumer"} & ops_test.model.applications.keys():
+        return
+    await ops_test.model.deploy(await ops_test.build_charm("."), trust=True)
+    await ops_test.model.deploy(await ops_test.build_charm(lb_charms.lb_consumer))
+    await ops_test.model.add_relation("azure-integrator", "lb-consumer")
+    await ops_test.model.wait_for_idle(timeout=20*60)
 
 
-@pytest.mark.lb_charms
-class TestAzureIntegrator(OperatorTest):
-    @pytest.mark.abort_on_fail
-    async def test_00_build_and_deploy(self):
-        if {"azure-integrator", "lb-consumer"} & self.model.applications.keys():
-            return
-        await self.model.deploy(await self.build_charm("."), trust=True)
-        await self.model.deploy(await self.build_charm(self.lb_charms.lb_consumer))
-        await self.model.add_relation("azure-integrator", "lb-consumer")
-        await self.model.wait_for_idle()
+async def test_lb_exists(ops_test):
+    az = ops_test.model.applications["azure-integrator"]
+    uuid_part = ops_test.model.info.uuid.split('-')[0]
+    rg = "juju-{}-{}".format(ops_test.model_name, uuid_part)
+    data = await az.units[0].run("az network lb list -g " + rg)
+    assert data.results["Code"] == "0"
+    lbs = json.loads(data.results["Stdout"])
+    assert len(lbs) == 1
 
-    async def test_01_exists(self):
-        az = self.model.applications["azure-integrator"]
-        uuid_part = self.model.info.uuid.split('-')[0]
-        rg = "juju-{}-{}".format(self.model_name, uuid_part)
-        data = await az.units[0].run("az network lb list -g " + rg)
-        assert data.results["Code"] == "0"
-        lbs = json.loads(data.results["Stdout"])
-        assert len(lbs) == 1
 
-    async def test_02_cleanup(self):
-        az = self.model.applications["azure-integrator"]
-        await az.remove_relation("lb-consumers", "lb-consumer")
-        await self.model.wait_for_idle()
-        uuid_part = self.model.info.uuid.split('-')[0]
-        rg = "juju-{}-{}".format(self.model_name, uuid_part)
-        data = await az.units[0].run("az network lb list -g " + rg)
-        assert data.results["Code"] == "0"
-        lbs = json.loads(data.results["Stdout"])
-        assert len(lbs) == 0
+async def test_connectivity(ops_test):
+    lb_consumer = ops_test.model.applications["lb-consumer"]
+    lb_unit = lb_consumer.units[0]
+    assert lb_unit.workload_status == "active"
+    address = lb_unit.workload_status_message
+    r = requests.get(f"http://{address}/")
+    assert r.status_code == 200
+    assert "nginx" in r.text.lower()
+
+
+async def test_cleanup(ops_test):
+    az = ops_test.model.applications["azure-integrator"]
+    await az.remove_relation("lb-consumers", "lb-consumer")
+    await ops_test.model.wait_for_idle()
+    uuid_part = ops_test.model.info.uuid.split('-')[0]
+    rg = "juju-{}-{}".format(ops_test.model_name, uuid_part)
+    data = await az.units[0].run("az network lb list -g " + rg)
+    assert data.results["Code"] == "0"
+    lbs = json.loads(data.results["Stdout"])
+    assert len(lbs) == 0
