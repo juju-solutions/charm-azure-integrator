@@ -281,6 +281,8 @@ def create_loadbalancer(request):
     """
     _validate_loadbalancer_request(request)
 
+    config = hookenv.config()
+
     resource_group = _get_resource_group()
 
     model_tag = "juju-model-uuid=" + MODEL_UUID
@@ -315,9 +317,9 @@ def create_loadbalancer(request):
     else:
         lb_create_args += [
             "--vnet-name",
-            "juju-internal-network",  # TODO find this.
+            config["vnetName"],
             "--subnet",
-            "juju-internal-subnet",  # TODO find this.
+            config["subnetName"],
         ]
 
     _azure("network", *lb_create_args)
@@ -341,7 +343,7 @@ def create_loadbalancer(request):
         "--lb-name",
         lb_name,
         "--vnet",
-        "juju-internal-network",  # TODO find this.
+        config["vnetName"],
         *backend_args,
     )
 
@@ -398,7 +400,7 @@ def create_loadbalancer(request):
             "rule",
             "list",
             "--nsg-name",
-            "juju-internal-nsg",  # FIXME
+            config["vnetSecurityGroup"],
             "--resource-group",
             resource_group,
             "--query",
@@ -426,7 +428,7 @@ def create_loadbalancer(request):
                             "--resource-group",
                             resource_group,
                             "--nsg-name",
-                            "juju-internal-nsg",  # FIXME
+                            config["vnetSecurityGroup"],
                             "--protocol",
                             request.protocol.value.capitalize(),
                             "--direction",
@@ -488,6 +490,7 @@ def remove_loadbalancer(request):
 
     :return: None
     """
+    config = hookenv.config()
     resource_group = _get_resource_group()
     lb_name = LB_NAME.format(request=request)
     # NB: Deleting the LB itself deletes any resources directly associated with it.
@@ -527,7 +530,7 @@ def remove_loadbalancer(request):
         "--resource-group",
         resource_group,
         "--nsg-name",
-        "juju-internal-nsg",  # FIXME
+        config["vnetSecurityGroup"],
         "--query",
         "[*].name"
     )
@@ -543,7 +546,7 @@ def remove_loadbalancer(request):
                 "--resource-group",
                 resource_group,
                 "--nsg-name",
-                "juju-internal-nsg",  # FIXME
+                config["vnetSecurityGroup"],
                 "--name",
                 nsg_rule
             )
