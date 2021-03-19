@@ -56,10 +56,6 @@ def get_credentials():
     """
     no_creds_msg = 'missing credentials; set credentials config'
     config = hookenv.config()
-    if config['resourceGroup'] is '':
-        status.blocked("Resource group is required.")
-        return False
-
     # try to use Juju's trust feature
     try:
         result = subprocess.run(['credential-get'],
@@ -84,7 +80,7 @@ def get_credentials():
             login_cli(json.loads(creds_data), config['resourceGroup'])
             return True
         except Exception as ex:
-            msg = f"invalid value for credentials config. {ex}"
+            msg = 'invalid value for credentials config'
             log_debug('{}: {}', msg, ex)
             status.blocked(msg)
             return False
@@ -116,7 +112,8 @@ def login_cli(creds_data, resource_group):
                '-u', app_id,
                '-p', app_pass,
                '-t', tenant_id)
-        # cache the assignable scope for use in roles
+        # cache the subscription ID for use in roles
+        kv().set('charm.azure.sub-id', sub_id)
         kv().set('charm.azure.scope-id', assignable_scope)
     except AzureError as e:
         # redact the credential info from the exception message
@@ -248,13 +245,13 @@ def update_roles():
     """
     Update all custom roles based on current definition file.
     """
-    assignable_scope = kv().get('charm.azure.scope-id')
+    sub_id = kv().get('charm.azure.sub-id')
     known_roles = {}
     for role_file in Path('files/roles/').glob('*.json'):
         role_name = role_file.stem
         role_data = json.loads(role_file.read_text())
-        role_fullname = role_data['Name'].format(assignable_scope)
-        scope = role_data['AssignableScopes'][0].format(assignable_scope)
+        role_fullname = role_data['Name'].format(sub_id)
+        scope = role_data['AssignableScopes'][0].format(sub_id)
         role_data['Name'] = role_fullname
         role_data['AssignableScopes'][0] = scope
         try:
@@ -386,10 +383,11 @@ def _get_role(role_name):
     known_roles = kv().get('charm.azure.roles', {})
     if role_name in known_roles:
         return known_roles[role_name]
+    sub_id = kv().get('charm.azure.sub-id')
     assignable_scope = kv().get('charm.azure.scope-id')
     role_file = Path('files/roles/{}.json'.format(role_name))
     role_data = json.loads(role_file.read_text())
-    role_fullname = role_data['Name'].format(assignable_scope)
+    role_fullname = role_data['Name'].format(sub_id)
 
     role_data['Name'] = role_fullname
     role_data['AssignableScopes'][0] = assignable_scope
@@ -408,11 +406,13 @@ def _assign_role(request, role, resource_group=None):
     if isinstance(role, StandardRole):
         role = role.value
     msi = _get_msi(request.vm_id)
-    assignable_scope = kv().get('charm.azure.scope-id')
+    rg = request.resource_group
+    if resource_group is not None:
+        rg = resource_group
     try:
         _azure('role', 'assignment', 'create',
                '--assignee-object-id', msi,
-               '--role', role,
-               '--scope', assignable_scope)
+               '--resource-group', rg,
+               '--role', role)
     except AlreadyExistsAzureError:
         pass
