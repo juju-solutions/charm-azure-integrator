@@ -476,7 +476,7 @@ def create_loadbalancer(request):
             "--resource-group",
             resource_group,
             "--query",
-            "frontendIpConfigurations[0].privateIpAddress.ipAddress",
+            "frontendIpConfigurations[0].privateIpAddress",
         )
 
     role = "public" if request.public else "private"
