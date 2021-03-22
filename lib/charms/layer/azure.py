@@ -26,6 +26,7 @@ SUPPORTED_LB_ALGS = ["Default", "SourceIP", "SourceIPProtocol"]
 SUPPORTED_LB_HC_PROTOS = ["http", "https", "tcp"]
 LB_NAME = "integrator-{request.id}"
 LB_POOL_NAME = "integrator-{request.id}-pool"
+LB_PUBLIC_IP_NAME = "integrator-{request.id}-public-ip"
 
 
 class StandardRole(Enum):
@@ -280,12 +281,15 @@ def create_loadbalancer(request):
     """
     _validate_loadbalancer_request(request)
 
+    config = hookenv.config()
+
     resource_group = _get_resource_group()
 
     model_tag = "juju-model-uuid=" + MODEL_UUID
 
     lb_name = LB_NAME.format(request=request)
     lb_pool_name = LB_POOL_NAME.format(request=request)
+    lb_public_ip_name = LB_PUBLIC_IP_NAME.format(request=request)
 
     lb_create_args = [
         "lb",
@@ -296,21 +300,26 @@ def create_loadbalancer(request):
         resource_group,
         "--backend-pool-name",
         lb_pool_name,
+        # Standard SKU is needed for compatibility with Standard SKU public IPs
+        # created by Juju
+        "--sku",
+        "Standard",
         "--tags",
         model_tag + ",request-name=" + request.name,
+
     ]
 
     if request.public:
         lb_create_args += [
-            "--public-ip-address-allocation",
-            "Static",
+            "--public-ip-address",
+            lb_public_ip_name,
         ]
     else:
         lb_create_args += [
             "--vnet-name",
-            "juju-internal-network",  # TODO find this.
+            config["vnetName"],
             "--subnet",
-            "juju-internal-subnet",  # TODO find this.
+            config["subnetName"],
         ]
 
     _azure("network", *lb_create_args)
@@ -333,6 +342,8 @@ def create_loadbalancer(request):
         resource_group,
         "--lb-name",
         lb_name,
+        "--vnet",
+        config["vnetName"],
         *backend_args,
     )
 
@@ -382,19 +393,93 @@ def create_loadbalancer(request):
 
         _azure("network", *lb_probe_create_args)
 
+    if request.public:
+        nsg_priorities = _azure(
+            "network",
+            "nsg",
+            "rule",
+            "list",
+            "--nsg-name",
+            config["vnetSecurityGroup"],
+            "--resource-group",
+            resource_group,
+            "--query",
+            "[*].priority"
+        )
+        nsg_priorities = set(nsg_priorities)
+        # juju uses priority 100+ for base rules, 200+ for `juju expose` rules
+        # we'll use 300+
+        priority = 300
+
+        for backend in request.backends:
+            for port in request.port_mapping.values():
+                attempt = 0
+                while True:
+                    while priority in nsg_priorities:
+                        priority += 1
+                    try:
+                        _azure(
+                            "network",
+                            "nsg",
+                            "rule",
+                            "create",
+                            "--name",
+                            "{}-{}-{}".format(lb_name, backend, port),
+                            "--resource-group",
+                            resource_group,
+                            "--nsg-name",
+                            config["vnetSecurityGroup"],
+                            "--protocol",
+                            request.protocol.value.capitalize(),
+                            "--direction",
+                            "inbound",
+                            "--source-address-prefix",
+                            "*",
+                            "--source-port-range",
+                            "*",
+                            "--destination-address-prefix",
+                            backend,
+                            "--destination-port-range",
+                            port,
+                            "--access",
+                            "allow",
+                            "--priority",
+                            priority
+                        )
+                        break
+                    except SecurityRuleConflictAzureError:
+                        if attempt >= 3:
+                            raise
+                        attempt += 1
+                    finally:
+                        priority += 1
+
+    if request.public:
+        ip = _azure(
+            "network",
+            "public-ip",
+            "show",
+            "--name",
+            lb_public_ip_name,
+            "--resource-group",
+            resource_group,
+            "--query",
+            "ipAddress"
+        )
+    else:
+        ip = _azure(
+            "network",
+            "lb",
+            "show",
+            "--name",
+            lb_name,
+            "--resource-group",
+            resource_group,
+            "--query",
+            "frontendIpConfigurations[0].privateIpAddress.ipAddress",
+        )
+
     role = "public" if request.public else "private"
-    query = "frontendIpConfigurations[0].{}IpAddress.ipAddress".format(role)
-    ip = _azure(
-        "network",
-        "lb",
-        "show",
-        "--name",
-        lb_name,
-        "--resource-group",
-        resource_group,
-        "--query",
-        query,
-    )
     hookenv.log("LB created with {} IP {}".format(role, ip), hookenv.INFO)
     return ip
 
@@ -405,7 +490,9 @@ def remove_loadbalancer(request):
 
     :return: None
     """
+    config = hookenv.config()
     resource_group = _get_resource_group()
+    lb_name = LB_NAME.format(request=request)
     # NB: Deleting the LB itself deletes any resources directly associated with it.
     try:
         _azure(
@@ -413,12 +500,58 @@ def remove_loadbalancer(request):
             "lb",
             "delete",
             "--name",
-            LB_NAME.format(request=request),
+            lb_name,
             "--resource-group",
             resource_group,
         )
     except DoesNotExistAzureError:
         pass
+
+    # The public IP is *not* directly associated with the LB, even if it was
+    # created implicitly. So we need to delete it.
+    try:
+        _azure(
+            "network",
+            "public-ip",
+            "delete",
+            "--name",
+            LB_PUBLIC_IP_NAME.format(request=request),
+            "--resource-group",
+            resource_group,
+        )
+    except DoesNotExistAzureError:
+        pass
+
+    nsg_rules = _azure(
+        "network",
+        "nsg",
+        "rule",
+        "list",
+        "--resource-group",
+        resource_group,
+        "--nsg-name",
+        config["vnetSecurityGroup"],
+        "--query",
+        "[*].name"
+    )
+    for nsg_rule in nsg_rules:
+        if not nsg_rule.startswith("{}-".format(lb_name)):
+            continue
+        try:
+            _azure(
+                "network",
+                "nsg",
+                "rule",
+                "delete",
+                "--resource-group",
+                resource_group,
+                "--nsg-name",
+                config["vnetSecurityGroup"],
+                "--name",
+                nsg_rule
+            )
+        except DoesNotExistAzureError:
+            pass
 
 
 def enable_loadbalancer_management(request):
@@ -545,6 +678,8 @@ class AzureError(Exception):
             return DoesNotExistAzureError(message)
         if "could not be found" in message:
             return DoesNotExistAzureError(message)
+        if "SecurityRuleConflict" in message:
+            return SecurityRuleConflictAzureError(message)
         return AzureError(message)
 
 
@@ -561,6 +696,13 @@ class DoesNotExistAzureError(AzureError):
     Meta-error subclass of AzureError representing something not existing.
     """
 
+    pass
+
+
+class SecurityRuleConflictAzureError(AzureError):
+    """
+    Meta-error subclass of AzureError representing a security rule conflict.
+    """
     pass
 
 

@@ -34,13 +34,20 @@ async def test_connectivity(ops_test):
     assert "nginx" in r.text.lower()
 
 
-async def test_cleanup(ops_test):
+async def test_cleanup(ops_test, az_cli):
     az = ops_test.model.applications["azure-integrator"]
     await az.remove_relation("lb-consumers", "lb-consumer")
     await ops_test.model.wait_for_idle()
     uuid_part = ops_test.model.info.uuid.split('-')[0]
     rg = "juju-{}-{}".format(ops_test.model_name, uuid_part)
-    data = await az.units[0].run("az network lb list -g " + rg)
-    assert data.results["Code"] == "0"
-    lbs = json.loads(data.results["Stdout"])
+
+    lbs = await az_cli("network lb list -g " + rg)
     assert len(lbs) == 0
+    public_ips = await az_cli("network public-ip list --query '[*].name' -g " + rg)
+    public_ips = [ip for ip in public_ips if ip.startswith("integrator-")]
+    assert len(public_ips) == 0
+    nsg_rules = await az_cli(
+        "network nsg rule list --query '[*].name' --nsg-name juju-internal-nsg -g " + rg
+    )
+    nsg_rules = [rule for rule in nsg_rules if rule.startswith("integrator-")]
+    assert len(nsg_rules) == 0
