@@ -52,7 +52,13 @@ async def test_lb(ops_test, list_lbs, list_public_ips, list_nsg_rules, visibilit
             r = requests.get(lb_url)
             assert r.status_code == 200
             assert "nginx" in r.text.lower()
-        for unit in (az_unit, lb_unit):
+        units = [az_unit]
+        if visibility == "public":
+            # Backends can never reach their own internal LBs, so self-connectivity can
+            # only be validated for a public LB. See bullet #3 on:
+            # https://docs.microsoft.com/en-us/azure/load-balancer/components#limitations
+            units.append(lb_unit)
+        for unit in units:
             log.info(f"Confirming access from {unit.name} to {lb_url}")
             data = await unit.run(f"curl -i '{lb_url}'")
             output = data.results.get("Stdout", data.results.get("Stderr", ""))
