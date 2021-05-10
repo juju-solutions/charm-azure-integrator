@@ -92,8 +92,15 @@ def get_credentials():
     except subprocess.CalledProcessError as e:
         if "permission denied" not in e.stderr.decode("utf8"):
             raise
-        no_creds_msg = "missing credentials access; grant with: juju trust"
-
+        no_creds_msg = 'missing credentials access; grant with: juju trust'
+    # We have the aadClient credentials. Do not used managed identity
+    if config['aadClient']:
+        login_cli({
+            'application-id': config['aadClient'],
+            'application-password': config['aadClientSecret'],
+            'subscription-id': config['subscriptionId']
+        })
+        return True
     # try credentials config
     if config["credentials"]:
         try:
@@ -189,6 +196,18 @@ def send_additional_metadata(request):
         security_group_name=run_config.get("vnetSecurityGroup")
         if run_config.get("vnetSecurityGroup")
         else "juju-internal-nsg",
+        use_managed_identity=False 
+        if run_config.get('aadClient') 
+        else True,
+        aad_client=run_config.get('aadClient')
+        if run_config.get('aadClient')
+        else None,
+        aad_secret=run_config.get('aadClientSecret')
+        if run_config.get('aadClientSecret') 
+        else None,
+        tenant_id=run_config.get('tenantId') 
+        if run_config.get('tenantId') 
+        else None
     )
 
 

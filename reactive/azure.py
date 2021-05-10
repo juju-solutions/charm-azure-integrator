@@ -10,7 +10,7 @@ from charms.reactive import (
     hook,
 )
 from charms.reactive.relations import endpoint_from_name
-
+from charmhelpers.core import hookenv
 from charms import layer
 
 
@@ -29,6 +29,11 @@ def get_creds():
 @when_not("charm.azure.initial-role-update")
 def update_roles_on_install():
     layer.status.maintenance("loading roles")
+    if hookenv.config('aadClient') != '':
+        layer.status.active('ready')
+        set_flag('charm.azure.initial-role-update')
+        return
+    layer.status.maintenance('loading roles')
     layer.azure.update_roles()
     set_flag("charm.azure.initial-role-update")
     layer.status.active("Ready")
@@ -62,6 +67,11 @@ def handle_requests():
             )
             layer.azure.ensure_msi(request)
             layer.azure.send_additional_metadata(request)
+            if hookenv.config('aadClient') != '':
+                # We don't need to perform operations on the VMs. The Service Principal is taking care of ops.
+                azure.mark_completed()
+                continue
+            layer.azure.ensure_msi(request)
             if request.instance_tags:
                 layer.azure.tag_instance(request)
             if request.requested_loadbalancer_management:
@@ -132,6 +142,8 @@ def cleanup():
 
 @hook("upgrade-charm")
 def update_roles():
+    if hookenv.config('aadClient') != '':
+        return
     layer.azure.update_roles()
 
     lb_consumers = endpoint_from_name("lb-consumers")

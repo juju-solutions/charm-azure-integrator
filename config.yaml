@@ -11,6 +11,26 @@ options:
       This config must be set at deployment and cannot be changed later.
     type: string
     default: ''
+  aadClient:
+    description:
+      The Service Principal client ID to use for this. Disables Managed Identity.
+    default: ''
+    type: string
+  aadClientSecret:
+    description:
+      The client secret to use for access to the azure platform.
+    default: ''
+    type: string
+  subscriptionId:
+    description:
+      The subscription the cluster is deployed under.
+    default: ''
+    type: string
+  tenantId:
+    description:
+      The tenant the cluster is deployed under.
+    default: ''
+    type: string
   subnetName:
     description:
       Vnet's subnet to be used by azure cloud-integration.
