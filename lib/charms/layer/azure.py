@@ -93,19 +93,14 @@ def get_credentials():
         if "permission denied" not in e.stderr.decode("utf8"):
             raise
         no_creds_msg = 'missing credentials access; grant with: juju trust'
-    # We have the aadClient credentials. Do not used managed identity
-    if config['aadClient']:
-        login_cli({
-            'application-id': config['aadClient'],
-            'application-password': config['aadClientSecret'],
-            'subscription-id': config['subscriptionId']
-        })
-        return True
     # try credentials config
     if config["credentials"]:
         try:
             creds_data = b64decode(config["credentials"]).decode("utf8")
-            login_cli(json.loads(creds_data))
+            loaded_creds = json.loads(creds_data)
+            loaded_creds["managed-identity"] = loaded_creds.get("managed-identity") if loaded_creds.get("managed-identity", "") != "" else True
+            kv().set("charm.azure.creds_data", loaded_creds)
+            login_cli(loaded_creds)
             return True
         except Exception as ex:
             msg = "invalid value for credentials config"

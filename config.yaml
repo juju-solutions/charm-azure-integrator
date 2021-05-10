@@ -11,26 +11,6 @@ options:
       This config must be set at deployment and cannot be changed later.
     type: string
     default: ''
-  aadClient:
-    description:
-      The Service Principal client ID to use for this. Disables Managed Identity.
-    default: ''
-    type: string
-  aadClientSecret:
-    description:
-      The client secret to use for access to the azure platform.
-    default: ''
-    type: string
-  subscriptionId:
-    description:
-      The subscription the cluster is deployed under.
-    default: ''
-    type: string
-  tenantId:
-    description:
-      The tenant the cluster is deployed under.
-    default: ''
-    type: string
   subnetName:
     description:
       Vnet's subnet to be used by azure cloud-integration.
@@ -46,8 +26,9 @@ options:
   credentials:
     description: |
       The base64-encoded JSON credentials data, which must include the 'application-id',
-      'application-password', and the 'subscription-id'.  These values can be retrieved
-      from Juju using the 'credentials' command and extracting the value of the 'details'
+      'application-password', and the 'subscription-id'. Optionally can include managed-identity (default true) 
+      and tenant-id (default '').
+      These values can be retrieved from Juju using the 'credentials' command and extracting the value of the 'details'
       key for the appropriate credential. For example, using 'jq', replace '<credential-name>'
       in the following:
 
