@@ -175,6 +175,7 @@ def send_additional_metadata(request):
     """
     run_config = hookenv.config() or {}
     res_grp = _azure("group", "show", "--name", request.resource_group)
+    credentials = kv().get('charm.azure.creds_data', {}) 
     # hard-code most of these because with Juju, they're always the same
     # and the queries required to look them up are a PITA
     request.send_additional_metadata(
@@ -191,18 +192,18 @@ def send_additional_metadata(request):
         security_group_name=run_config.get("vnetSecurityGroup")
         if run_config.get("vnetSecurityGroup")
         else "juju-internal-nsg",
-        use_managed_identity=False 
-        if run_config.get('aadClient') 
+        use_managed_identity=credentials.get("managed-identity")
+        if credentials.get("managed-identity", "") != "" 
         else True,
-        aad_client=run_config.get('aadClient')
-        if run_config.get('aadClient')
-        else None,
-        aad_secret=run_config.get('aadClientSecret')
-        if run_config.get('aadClientSecret') 
-        else None,
-        tenant_id=run_config.get('tenantId') 
-        if run_config.get('tenantId') 
-        else None
+        aad_client=credentials.get("application-id") 
+        if credentials.get("application-id") 
+        else "",
+        aad_secret=credentials.get("application-password") 
+        if credentials.get("application-password") 
+        else "",
+        tenant_id=credentials.get("tenant-id") 
+        if credentials.get("tenant-id") 
+        else ""
     )
 
 

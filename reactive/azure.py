@@ -1,3 +1,4 @@
+import json
 from traceback import format_exc
 
 from charms.reactive import (
@@ -11,6 +12,7 @@ from charms.reactive import (
 )
 from charms.reactive.relations import endpoint_from_name
 from charmhelpers.core import hookenv
+from charmhelpers.core.unitdata import kv
 from charms import layer
 
 
@@ -29,11 +31,10 @@ def get_creds():
 @when_not("charm.azure.initial-role-update")
 def update_roles_on_install():
     layer.status.maintenance("loading roles")
-    if hookenv.config('aadClient') != '':
+    if kv().get('charm.azure.creds_data') and not kv().get('charm.azure.creds_data').get('managed-identity'):
         layer.status.active('ready')
         set_flag('charm.azure.initial-role-update')
         return
-    layer.status.maintenance('loading roles')
     layer.azure.update_roles()
     set_flag("charm.azure.initial-role-update")
     layer.status.active("Ready")
@@ -57,7 +58,8 @@ def no_requests():
     "endpoint.clients.requests-pending",
 )
 def handle_requests():
-    azure = endpoint_from_name("clients")
+    azure = endpoint_from_name('clients')
+    creds_data = kv().get('charm.azure.creds_data')
     try:
         for request in azure.requests:
             layer.status.maintenance(
@@ -67,7 +69,8 @@ def handle_requests():
             )
             layer.azure.ensure_msi(request)
             layer.azure.send_additional_metadata(request)
-            if hookenv.config('aadClient') != '':
+
+            if creds_data is not None and not creds_data.get('managed-identity'):
                 # We don't need to perform operations on the VMs. The Service Principal is taking care of ops.
                 azure.mark_completed()
                 continue
@@ -142,7 +145,8 @@ def cleanup():
 
 @hook("upgrade-charm")
 def update_roles():
-    if hookenv.config('aadClient') != '':
+    creds_data = kv().get('charm.azure.creds_data')
+    if creds_data is not None and not creds_data.get('managed-identity'):
         return
     layer.azure.update_roles()
 
