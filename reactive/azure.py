@@ -1,4 +1,3 @@
-import json
 from traceback import format_exc
 
 from charms.reactive import (
@@ -11,7 +10,6 @@ from charms.reactive import (
     hook,
 )
 from charms.reactive.relations import endpoint_from_name
-from charmhelpers.core import hookenv
 from charmhelpers.core.unitdata import kv
 from charms import layer
 
