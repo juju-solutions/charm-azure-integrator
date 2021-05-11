@@ -29,9 +29,9 @@ def get_creds():
 @when_not("charm.azure.initial-role-update")
 def update_roles_on_install():
     layer.status.maintenance("loading roles")
-    if kv().get('charm.azure.creds_data') and not kv().get('charm.azure.creds_data').get('managed-identity'):
-        layer.status.active('ready')
-        set_flag('charm.azure.initial-role-update')
+    if kv().get("charm.azure.creds_data") and not kv().get("charm.azure.creds_data").get("managed-identity"):
+        layer.status.active("ready")
+        set_flag("charm.azure.initial-role-update")
         return
     layer.azure.update_roles()
     set_flag("charm.azure.initial-role-update")
@@ -56,8 +56,8 @@ def no_requests():
     "endpoint.clients.requests-pending",
 )
 def handle_requests():
-    azure = endpoint_from_name('clients')
-    creds_data = kv().get('charm.azure.creds_data')
+    azure = endpoint_from_name("clients")
+    creds_data = kv().get("charm.azure.creds_data")
     try:
         for request in azure.requests:
             layer.status.maintenance(
@@ -68,7 +68,7 @@ def handle_requests():
             layer.azure.ensure_msi(request)
             layer.azure.send_additional_metadata(request)
 
-            if creds_data is not None and not creds_data.get('managed-identity'):
+            if creds_data is not None and not creds_data.get("managed-identity"):
                 # We don't need to perform operations on the VMs. The Service Principal is taking care of ops.
                 azure.mark_completed()
                 continue
@@ -143,8 +143,8 @@ def cleanup():
 
 @hook("upgrade-charm")
 def update_roles():
-    creds_data = kv().get('charm.azure.creds_data')
-    if creds_data is not None and not creds_data.get('managed-identity'):
+    creds_data = kv().get("charm.azure.creds_data")
+    if creds_data is not None and not creds_data.get("managed-identity"):
         return
     layer.azure.update_roles()
 

@@ -92,7 +92,8 @@ def get_credentials():
     except subprocess.CalledProcessError as e:
         if "permission denied" not in e.stderr.decode("utf8"):
             raise
-        no_creds_msg = 'missing credentials access; grant with: juju trust'
+        no_creds_msg = "missing credentials access; grant with: juju trust"
+
     # try credentials config
     if config["credentials"]:
         try:
@@ -175,7 +176,7 @@ def send_additional_metadata(request):
     """
     run_config = hookenv.config() or {}
     res_grp = _azure("group", "show", "--name", request.resource_group)
-    credentials = kv().get('charm.azure.creds_data', {}) 
+    credentials = kv().get("charm.azure.creds_data", {}) 
     # hard-code most of these because with Juju, they're always the same
     # and the queries required to look them up are a PITA
     request.send_additional_metadata(
