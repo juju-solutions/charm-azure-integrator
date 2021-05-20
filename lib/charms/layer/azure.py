@@ -75,6 +75,7 @@ def get_credentials():
     """
     no_creds_msg = "missing credentials; set credentials config"
     config = hookenv.config()
+    credentials = {}
     # try to use Juju's trust feature
     try:
         result = subprocess.run(
@@ -86,7 +87,7 @@ def get_credentials():
         creds = yaml.load(result.stdout.decode("utf8"))
         creds_data = creds["credential"]["attributes"]
         login_cli(creds_data)
-        return True
+        credentials = creds_data
     except FileNotFoundError:
         pass  # juju trust not available
     except subprocess.CalledProcessError as e:
@@ -99,20 +100,17 @@ def get_credentials():
         try:
             creds_data = b64decode(config["credentials"]).decode("utf8")
             loaded_creds = json.loads(creds_data)
-            loaded_creds["managed-identity"] = loaded_creds.get("managed-identity") if loaded_creds.get("managed-identity", "") != "" else True
-            kv().set("charm.azure.creds_data", loaded_creds)
             login_cli(loaded_creds)
-            return True
+            credentials = loaded_creds
         except Exception as ex:
             msg = "invalid value for credentials config"
             log_debug("{}: {}", msg, ex)
             status.blocked(msg)
-            return False
 
+    loaded_creds.setdefault("managed-identity", True)
     # no creds provided
     status.blocked(no_creds_msg)
-    return False
-
+    return credentials
 
 def login_cli(creds_data):
     """
@@ -176,7 +174,7 @@ def send_additional_metadata(request):
     """
     run_config = hookenv.config() or {}
     res_grp = _azure("group", "show", "--name", request.resource_group)
-    credentials = kv().get("charm.azure.creds_data", {}) 
+    credentials = get_credentials()
     # hard-code most of these because with Juju, they're always the same
     # and the queries required to look them up are a PITA
     request.send_additional_metadata(

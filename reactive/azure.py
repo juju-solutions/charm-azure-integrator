@@ -8,11 +8,12 @@ from charms.reactive import (
     toggle_flag,
     clear_flag,
     hook,
+    is_flag_set
 )
 from charms.reactive.relations import endpoint_from_name
 from charmhelpers.core.unitdata import kv
 from charms import layer
-
+from charms.layer.azure import get_credentials
 
 @when_any("config.changed.credentials")
 def update_creds():
@@ -22,22 +23,17 @@ def update_creds():
 @when_all("apt.installed.azure-cli")
 @when_not("charm.azure.creds.set")
 def get_creds():
-    toggle_flag("charm.azure.creds.set", layer.azure.get_credentials())
+    toggle_flag("charm.azure.creds.set", get_credentials())
 
 
 @when_all("apt.installed.azure-cli", "charm.azure.creds.set")
 @when_not("charm.azure.initial-role-update")
 def update_roles_on_install():
     layer.status.maintenance("loading roles")
-    creds_data = kv().get("charm.azure.creds_data", None)
-    if creds_data and not creds_data.get("managed-identity"):
-        layer.status.active("ready")
-        set_flag("charm.azure.initial-role-update")
-        return
-    layer.azure.update_roles()
+    if get_credentials()["managed-identity"]:
+        layer.azure.update_roles()
     set_flag("charm.azure.initial-role-update")
     layer.status.active("Ready")
-
 
 @when_all(
     "apt.installed.azure-cli",
@@ -67,7 +63,7 @@ def handle_requests():
                 )
             )
             layer.azure.send_additional_metadata(request)
-            if creds_data is not None and creds_data.get("managed-identity") is False:
+            if not get_credentials()["managed-identity"]:
                 # We don't need to perform operations on the VMs. The Service Principal is taking care of ops.
                 azure.mark_completed()
                 continue
@@ -142,8 +138,9 @@ def cleanup():
 
 @hook("upgrade-charm")
 def update_roles():
-    creds_data = kv().get("charm.azure.creds_data")
-    if creds_data is not None and creds_data.get("managed-identity") is False:
+    if not is_flag_set("charm.azure.creds.set"):
+        return
+    if get_credentials()["managed-identity"]: 
         return
     layer.azure.update_roles()
 
