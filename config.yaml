@@ -23,6 +23,12 @@ options:
       This config must be set at deployment and cannot be changed later.
     type: string
     default: 'juju-internal-nsg'
+  vnetSecurityGroupResourceGroup:
+    description:
+      Default network sec group (NSG) to be used by azure cloud integration.
+      This config must be set at deployment and cannot be changed later.
+    type: string
+    default: ''
   credentials:
     description: |
       The base64-encoded JSON credentials data, which must include the 'application-id',

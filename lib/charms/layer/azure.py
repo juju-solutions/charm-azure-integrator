@@ -99,7 +99,7 @@ def get_credentials():
         try:
             creds_data = b64decode(config["credentials"]).decode("utf8")
             loaded_creds = json.loads(creds_data)
-            loaded_creds["managed-identity"] = loaded_creds.get("managed-identity") if loaded_creds.get("managed-identity") else True
+            loaded_creds["managed-identity"] = loaded_creds.get("managed-identity") if loaded_creds.get("managed-identity", "") != "" else True
             kv().set("charm.azure.creds_data", loaded_creds)
             login_cli(loaded_creds)
             return True
@@ -193,6 +193,9 @@ def send_additional_metadata(request):
         security_group_name=run_config.get("vnetSecurityGroup")
         if run_config.get("vnetSecurityGroup")
         else "juju-internal-nsg",
+        security_group_resource_group=run_config.get("vnetSecurityGroupResourceGroup")
+        if run_config.get("vnetSecurityGroupResourceGroup")
+        else "",
         use_managed_identity=credentials.get("managed-identity")
         if credentials.get("managed-identity", "") != "" 
         else True,
