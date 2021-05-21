@@ -73,7 +73,7 @@ def get_credentials():
 
     Prefers the config so that it can be overridden.
     """
-    no_creds_msg = "missing credentials; set credentials config"
+    msg = "missing credentials; set credentials config"
     config = hookenv.config()
     credentials = {}
     # try to use Juju's trust feature
@@ -105,11 +105,14 @@ def get_credentials():
         except Exception as ex:
             msg = "invalid value for credentials config"
             log_debug("{}: {}", msg, ex)
-            status.blocked(msg)
+            credentials = {}
+
+    if credentials == {}:
+        status.blocked(msg)
+        return credentials
 
     loaded_creds.setdefault("managed-identity", True)
-    # no creds provided
-    status.blocked(no_creds_msg)
+
     return credentials
 
 def login_cli(creds_data):
