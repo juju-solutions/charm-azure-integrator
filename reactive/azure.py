@@ -140,7 +140,7 @@ def cleanup():
 def update_roles():
     if not is_flag_set("charm.azure.creds.set"):
         return
-    if get_credentials()["managed-identity"]: 
+    if not get_credentials()["managed-identity"]: 
         return
     layer.azure.update_roles()
 
