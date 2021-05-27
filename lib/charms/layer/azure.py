@@ -115,6 +115,7 @@ def get_credentials():
 
     return credentials
 
+
 def login_cli(creds_data):
     """
     Use the credentials to authenticate the Azure CLI.
@@ -197,18 +198,10 @@ def send_additional_metadata(request):
         security_group_resource_group=run_config.get("vnetSecurityGroupResourceGroup")
         if run_config.get("vnetSecurityGroupResourceGroup")
         else "",
-        use_managed_identity=credentials.get("managed-identity")
-        if credentials.get("managed-identity", "") != "" 
-        else True,
-        aad_client=credentials.get("application-id") 
-        if credentials.get("application-id") 
-        else "",
-        aad_secret=credentials.get("application-password") 
-        if credentials.get("application-password") 
-        else "",
-        tenant_id=credentials.get("tenant-id") 
-        if credentials.get("tenant-id") 
-        else ""
+        use_managed_identity=credentials["managed-identity"],
+        aad_client=credentials["application-id"],
+        aad_secret=credentials["application-password"],
+        tenant_id=credentials["tenant-id"],
     )
 
 
@@ -326,7 +319,6 @@ def create_loadbalancer(request):
         "Standard",
         "--tags",
         model_tag + ",request-name=" + request.name,
-
     ]
 
     if request.public:
@@ -424,7 +416,7 @@ def create_loadbalancer(request):
             "--resource-group",
             resource_group,
             "--query",
-            "[*].priority"
+            "[*].priority",
         )
         nsg_priorities = set(nsg_priorities)
         # juju uses priority 100+ for base rules, 200+ for `juju expose` rules
@@ -464,7 +456,7 @@ def create_loadbalancer(request):
                             "--access",
                             "allow",
                             "--priority",
-                            priority
+                            priority,
                         )
                         break
                     except SecurityRuleConflictAzureError:
@@ -484,7 +476,7 @@ def create_loadbalancer(request):
             "--resource-group",
             resource_group,
             "--query",
-            "ipAddress"
+            "ipAddress",
         )
     else:
         ip = _azure(
@@ -552,7 +544,7 @@ def remove_loadbalancer(request):
         "--nsg-name",
         config["vnetSecurityGroup"],
         "--query",
-        "[*].name"
+        "[*].name",
     )
     for nsg_rule in nsg_rules:
         if not nsg_rule.startswith("{}-".format(lb_name)):
@@ -568,7 +560,7 @@ def remove_loadbalancer(request):
                 "--nsg-name",
                 config["vnetSecurityGroup"],
                 "--name",
-                nsg_rule
+                nsg_rule,
             )
         except DoesNotExistAzureError:
             pass
@@ -723,6 +715,7 @@ class SecurityRuleConflictAzureError(AzureError):
     """
     Meta-error subclass of AzureError representing a security rule conflict.
     """
+
     pass
 
 
