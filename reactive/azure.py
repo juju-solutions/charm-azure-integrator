@@ -54,7 +54,7 @@ def no_requests():
 )
 def handle_requests():
     azure = endpoint_from_name("clients")
-    creds_data = kv().get("charm.azure.creds_data")
+    creds_data = get_credentials()
     try:
         for request in azure.requests:
             layer.status.maintenance(
@@ -63,7 +63,7 @@ def handle_requests():
                 )
             )
             layer.azure.send_additional_metadata(request)
-            if not get_credentials()["managed-identity"]:
+            if not creds_data["managed-identity"]:
                 # We don't need to perform operations on the VMs. The Service Principal is taking care of ops.
                 azure.mark_completed()
                 continue
