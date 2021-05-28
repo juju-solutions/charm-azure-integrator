@@ -93,7 +93,7 @@ def get_credentials():
     except subprocess.CalledProcessError as e:
         if "permission denied" not in e.stderr.decode("utf8"):
             raise
-        no_creds_msg = "missing credentials access; grant with: juju trust"
+        msg = "missing credentials access; grant with: juju trust"
 
     # try credentials config
     if config["credentials"]:

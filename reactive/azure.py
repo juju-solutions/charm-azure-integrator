@@ -11,9 +11,9 @@ from charms.reactive import (
     is_flag_set
 )
 from charms.reactive.relations import endpoint_from_name
-from charmhelpers.core.unitdata import kv
 from charms import layer
 from charms.layer.azure import get_credentials
+
 
 @when_any("config.changed.credentials")
 def update_creds():
@@ -34,6 +34,7 @@ def update_roles_on_install():
         layer.azure.update_roles()
     set_flag("charm.azure.initial-role-update")
     layer.status.active("Ready")
+
 
 @when_all(
     "apt.installed.azure-cli",
@@ -64,7 +65,8 @@ def handle_requests():
             )
             layer.azure.send_additional_metadata(request)
             if not creds_data["managed-identity"]:
-                # We don't need to perform operations on the VMs. The Service Principal is taking care of ops.
+                # We don't need to perform operations on the VMs.
+                # The Service Principal is taking care of ops.
                 azure.mark_completed()
                 continue
             layer.azure.ensure_msi(request)
@@ -140,7 +142,7 @@ def cleanup():
 def update_roles():
     if not is_flag_set("charm.azure.creds.set"):
         return
-    if not get_credentials()["managed-identity"]: 
+    if not get_credentials()["managed-identity"]:
         return
     layer.azure.update_roles()
 
