@@ -73,8 +73,9 @@ def get_credentials():
 
     Prefers the config so that it can be overridden.
     """
-    no_creds_msg = "missing credentials; set credentials config"
+    msg = "missing credentials; set credentials config"
     config = hookenv.config()
+    credentials = {}
     # try to use Juju's trust feature
     try:
         result = subprocess.run(
@@ -83,32 +84,36 @@ def get_credentials():
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        creds = yaml.load(result.stdout.decode("utf8"))
+        creds = yaml.safe_load(result.stdout.decode("utf8"))
         creds_data = creds["credential"]["attributes"]
         login_cli(creds_data)
-        return True
+        credentials = creds_data
     except FileNotFoundError:
         pass  # juju trust not available
     except subprocess.CalledProcessError as e:
         if "permission denied" not in e.stderr.decode("utf8"):
             raise
-        no_creds_msg = "missing credentials access; grant with: juju trust"
+        msg = "missing credentials access; grant with: juju trust"
 
     # try credentials config
     if config["credentials"]:
         try:
             creds_data = b64decode(config["credentials"]).decode("utf8")
-            login_cli(json.loads(creds_data))
-            return True
+            loaded_creds = json.loads(creds_data)
+            login_cli(loaded_creds)
+            credentials = loaded_creds
         except Exception as ex:
             msg = "invalid value for credentials config"
             log_debug("{}: {}", msg, ex)
-            status.blocked(msg)
-            return False
+            credentials = {}
 
-    # no creds provided
-    status.blocked(no_creds_msg)
-    return False
+    if credentials == {}:
+        status.blocked(msg)
+        return credentials
+
+    credentials.setdefault("managed-identity", True)
+
+    return credentials
 
 
 def login_cli(creds_data):
@@ -173,6 +178,7 @@ def send_additional_metadata(request):
     """
     run_config = hookenv.config() or {}
     res_grp = _azure("group", "show", "--name", request.resource_group)
+    credentials = get_credentials()
     # hard-code most of these because with Juju, they're always the same
     # and the queries required to look them up are a PITA
     request.send_additional_metadata(
@@ -189,6 +195,11 @@ def send_additional_metadata(request):
         security_group_name=run_config.get("vnetSecurityGroup")
         if run_config.get("vnetSecurityGroup")
         else "juju-internal-nsg",
+        security_group_resource_group=run_config["vnetSecurityGroupResourceGroup"],
+        use_managed_identity=credentials["managed-identity"],
+        aad_client=credentials["application-id"],
+        aad_secret=credentials["application-password"],
+        tenant_id=credentials["tenant-id"],
     )
 
 
@@ -306,7 +317,6 @@ def create_loadbalancer(request):
         "Standard",
         "--tags",
         model_tag + ",request-name=" + request.name,
-
     ]
 
     if request.public:
@@ -404,7 +414,7 @@ def create_loadbalancer(request):
             "--resource-group",
             resource_group,
             "--query",
-            "[*].priority"
+            "[*].priority",
         )
         nsg_priorities = set(nsg_priorities)
         # juju uses priority 100+ for base rules, 200+ for `juju expose` rules
@@ -444,7 +454,7 @@ def create_loadbalancer(request):
                             "--access",
                             "allow",
                             "--priority",
-                            priority
+                            priority,
                         )
                         break
                     except SecurityRuleConflictAzureError:
@@ -464,7 +474,7 @@ def create_loadbalancer(request):
             "--resource-group",
             resource_group,
             "--query",
-            "ipAddress"
+            "ipAddress",
         )
     else:
         ip = _azure(
@@ -532,7 +542,7 @@ def remove_loadbalancer(request):
         "--nsg-name",
         config["vnetSecurityGroup"],
         "--query",
-        "[*].name"
+        "[*].name",
     )
     for nsg_rule in nsg_rules:
         if not nsg_rule.startswith("{}-".format(lb_name)):
@@ -548,7 +558,7 @@ def remove_loadbalancer(request):
                 "--nsg-name",
                 config["vnetSecurityGroup"],
                 "--name",
-                nsg_rule
+                nsg_rule,
             )
         except DoesNotExistAzureError:
             pass
@@ -703,6 +713,7 @@ class SecurityRuleConflictAzureError(AzureError):
     """
     Meta-error subclass of AzureError representing a security rule conflict.
     """
+
     pass
 
 

@@ -23,11 +23,18 @@ options:
       This config must be set at deployment and cannot be changed later.
     type: string
     default: 'juju-internal-nsg'
+  vnetSecurityGroupResourceGroup:
+    description:
+      Default network sec group (NSG) to be used by azure cloud integration.
+      This config must be set at deployment and cannot be changed later.
+    type: string
+    default: ''
   credentials:
     description: |
       The base64-encoded JSON credentials data, which must include the 'application-id',
-      'application-password', and the 'subscription-id'.  These values can be retrieved
-      from Juju using the 'credentials' command and extracting the value of the 'details'
+      'application-password', and the 'subscription-id'. Optionally can include managed-identity (default true) 
+      and tenant-id (default '').
+      These values can be retrieved from Juju using the 'credentials' command and extracting the value of the 'details'
       key for the appropriate credential. For example, using 'jq', replace '<credential-name>'
       in the following:
 

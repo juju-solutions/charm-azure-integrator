@@ -8,10 +8,11 @@ from charms.reactive import (
     toggle_flag,
     clear_flag,
     hook,
+    is_flag_set
 )
 from charms.reactive.relations import endpoint_from_name
-
 from charms import layer
+from charms.layer.azure import get_credentials
 
 
 @when_any("config.changed.credentials")
@@ -22,14 +23,15 @@ def update_creds():
 @when_all("apt.installed.azure-cli")
 @when_not("charm.azure.creds.set")
 def get_creds():
-    toggle_flag("charm.azure.creds.set", layer.azure.get_credentials())
+    toggle_flag("charm.azure.creds.set", get_credentials())
 
 
 @when_all("apt.installed.azure-cli", "charm.azure.creds.set")
 @when_not("charm.azure.initial-role-update")
 def update_roles_on_install():
     layer.status.maintenance("loading roles")
-    layer.azure.update_roles()
+    if get_credentials()["managed-identity"]:
+        layer.azure.update_roles()
     set_flag("charm.azure.initial-role-update")
     layer.status.active("Ready")
 
@@ -53,6 +55,7 @@ def no_requests():
 )
 def handle_requests():
     azure = endpoint_from_name("clients")
+    creds_data = get_credentials()
     try:
         for request in azure.requests:
             layer.status.maintenance(
@@ -60,8 +63,12 @@ def handle_requests():
                     request.vm_name, request.unit_name
                 )
             )
-            layer.azure.ensure_msi(request)
             layer.azure.send_additional_metadata(request)
+            if not creds_data["managed-identity"]:
+                # We don't need to perform operations on the VMs.
+                # The Service Principal is taking care of ops.
+                continue
+            layer.azure.ensure_msi(request)
             if request.instance_tags:
                 layer.azure.tag_instance(request)
             if request.requested_loadbalancer_management:
@@ -132,6 +139,10 @@ def cleanup():
 
 @hook("upgrade-charm")
 def update_roles():
+    if not is_flag_set("charm.azure.creds.set"):
+        return
+    if not get_credentials()["managed-identity"]:
+        return
     layer.azure.update_roles()
 
     lb_consumers = endpoint_from_name("lb-consumers")
