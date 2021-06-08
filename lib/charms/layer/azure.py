@@ -84,7 +84,7 @@ def get_credentials():
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        creds = yaml.load(result.stdout.decode("utf8"))
+        creds = yaml.safe_load(result.stdout.decode("utf8"))
         creds_data = creds["credential"]["attributes"]
         login_cli(creds_data)
         credentials = creds_data
@@ -111,7 +111,7 @@ def get_credentials():
         status.blocked(msg)
         return credentials
 
-    loaded_creds.setdefault("managed-identity", True)
+    credentials.setdefault("managed-identity", True)
 
     return credentials
 
@@ -195,9 +195,7 @@ def send_additional_metadata(request):
         security_group_name=run_config.get("vnetSecurityGroup")
         if run_config.get("vnetSecurityGroup")
         else "juju-internal-nsg",
-        security_group_resource_group=run_config.get("vnetSecurityGroupResourceGroup")
-        if run_config.get("vnetSecurityGroupResourceGroup")
-        else "",
+        security_group_resource_group=run_config["vnetSecurityGroupResourceGroup"],
         use_managed_identity=credentials["managed-identity"],
         aad_client=credentials["application-id"],
         aad_secret=credentials["application-password"],

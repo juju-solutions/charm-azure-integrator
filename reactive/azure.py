@@ -67,7 +67,6 @@ def handle_requests():
             if not creds_data["managed-identity"]:
                 # We don't need to perform operations on the VMs.
                 # The Service Principal is taking care of ops.
-                azure.mark_completed()
                 continue
             layer.azure.ensure_msi(request)
             if request.instance_tags:
