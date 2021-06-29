@@ -134,12 +134,9 @@ def login_cli(creds_data):
         _azure(
             "login",
             "--service-principal",
-            "-u",
-            app_id,
-            "-p",
-            app_pass,
-            "-t",
-            tenant_id,
+            f"-u={app_id}",
+            f"-p={app_pass}",
+            f"-t={tenant_id}",
         )
         # cache the subscription ID for use in roles
         kv().set("charm.azure.sub-id", sub_id)
