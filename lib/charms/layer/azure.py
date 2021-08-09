@@ -321,12 +321,23 @@ def create_loadbalancer(request):
             "--public-ip-address",
             lb_public_ip_name,
         ]
-    else:
+    elif request.ingress_address:
+        lb_create_args += [
+            "--private-ip-address",
+            request.ingress_address
+        ]
+
+    if len(config["subnetID"]) == 0:
         lb_create_args += [
             "--vnet-name",
             config["vnetName"],
             "--subnet",
             config["subnetName"],
+        ]
+    else:
+        lb_create_args += [
+            "--subnet",
+            config["subnetID"],
         ]
 
     _azure("network", *lb_create_args)

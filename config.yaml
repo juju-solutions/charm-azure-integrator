@@ -11,6 +11,13 @@ options:
       This config must be set at deployment and cannot be changed later.
     type: string
     default: ''
+  subnetID:
+    description:
+      It is recommended to specify the ID of the subnet instead of its name for load balancer creation.
+      That is specially important in more complex scenarios, e.g. using subnets and vnets present on a
+      resource group different from where the load balancer should exist or its backend VMs are.
+    type: string
+    default: ""
   subnetName:
     description:
       Vnet's subnet to be used by azure cloud-integration.
