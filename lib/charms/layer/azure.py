@@ -281,6 +281,15 @@ def _validate_loadbalancer_request(request):
         raise LoadBalancerUnsupportedFeatureException(error_fields)
 
 
+def _get_vnet():
+    config = hookenv.config()
+
+    if len(config.get("subnetID", "")) > 0 and \
+       "/subnets/" in config.get("subnetID", ""):
+        return "/".join(config["subnetID"].split("/")[:-2])
+    return config["vnetName"]
+
+
 def create_loadbalancer(request):
     """
     Create an Azure LoadBalancer.
@@ -361,7 +370,7 @@ def create_loadbalancer(request):
         "--lb-name",
         lb_name,
         "--vnet",
-        config["vnetName"],
+        _get_vnet(),
         *backend_args,
     )
 
