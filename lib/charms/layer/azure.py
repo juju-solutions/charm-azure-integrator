@@ -174,14 +174,12 @@ def send_additional_metadata(request):
     available from the metadata server.
     """
     run_config = hookenv.config() or {}
-    res_grp = _azure(
-            "group",
-            "show",
-            "--subscription",
-            request.subscription_id,
-            "--name",
-            request.resource_group
-        )
+    res_grp_args = ["group", "show", "--name", request.resource_group]
+    if hasattr(request, 'subscription_id'):
+        for pos, arg in enumerate(["--subscription", request.subscription_id]):
+            res_grp_args.insert(pos + 2, arg)
+
+    res_grp = _azure(*res_grp_args)
     credentials = get_credentials()
     # hard-code most of these because with Juju, they're always the same
     # and the queries required to look them up are a PITA
