@@ -178,7 +178,6 @@ def send_additional_metadata(request):
     if hasattr(request, 'subscription_id'):
         res_grp_args += ["--subscription", request.subscription_id]
     res_grp = _azure(*res_grp_args)
-    
     credentials = get_credentials()
     # hard-code most of these because with Juju, they're always the same
     # and the queries required to look them up are a PITA
