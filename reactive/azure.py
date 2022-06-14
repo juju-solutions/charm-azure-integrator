@@ -100,6 +100,11 @@ def handle_requests():
         )
 
 
+@when_all(
+    "apt.installed.azure-cli",
+    "charm.azure.creds.set",
+    "charm.azure.initial-role-update",
+)
 @when_any("endpoint.lb-consumers.requests_changed")
 def manage_lbs():
     lb_consumers = endpoint_from_name("lb-consumers")
