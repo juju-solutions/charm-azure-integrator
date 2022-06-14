@@ -6,7 +6,7 @@ description: |
   This charm can grant select permissions to instances of applications
   related to it which enable integration with Azure specific features,
   such as firewalls, load balancing, block storage, object storage, etc.
-docs: https://discourse.charmhub.io/t/azure-integrator-doc-index/6101
+docs: https://discourse.charmhub.io/t/azure-integrator-docs-index/6218
 maintainers: ['Cory Johns <johnsca@gmail.com>']
 series:
   - focal
