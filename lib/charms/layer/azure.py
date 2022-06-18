@@ -124,6 +124,8 @@ def login_cli(creds_data):
     app_pass = creds_data["application-password"]
     sub_id = creds_data["subscription-id"]
     tenant_id = _get_tenant_id(sub_id)
+    if tenant_id and not creds_data.get("tenant-id"):
+        creds_data["tenant-id"] = tenant_id
     try:
         log("Forcing logout of Azure CLI")
         _azure("logout")
