@@ -9,6 +9,7 @@ description: |
 docs: https://discourse.charmhub.io/t/azure-integrator-docs-index/6218
 maintainers: ['Cory Johns <johnsca@gmail.com>']
 series:
+  - jammy
   - focal
   - bionic
   - xenial
