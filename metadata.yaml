@@ -12,7 +12,6 @@ series:
   - jammy
   - focal
   - bionic
-  - xenial
 tags: ['azure', 'native', 'integration']
 provides:
   clients:
