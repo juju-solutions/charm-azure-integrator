@@ -3,22 +3,16 @@ name: Run tests with Tox
 on: [pull_request]
 
 jobs:
-  lint-and-unit:
-    name: Lint & Unit Tests
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: [3.6, 3.7, 3.8]
+  call-inclusive-naming-check:
+    name: Inclusive naming
+    uses: canonical-web-and-design/Inclusive-naming/.github/workflows/woke.yaml@main
+    with:
+      fail-on-error: "true"
 
-    steps:
-      - uses: actions/checkout@v2
-      - name: Setup Python
-        uses: actions/setup-python@v1
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install Tox
-        run: pip install tox
-      - name: Lint
-        run: tox -e lint
-      - name: Unit tests
-        run: tox -e unit
+  lint-unit:
+    name: Lint Unit
+    uses: charmed-kubernetes/workflows/.github/workflows/lint-unit.yaml@main
+    needs:
+      - call-inclusive-naming-check
+    with:
+      python: "['3.6', '3.7', '3.8', '3.9', '3.10']"
