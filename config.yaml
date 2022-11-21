@@ -2,31 +2,26 @@ options:
   vnetName:
     description:
       VnetName to be passed via cloud-integration.
-      This config must be set at deployment and cannot be changed later.
     type: string
     default: 'juju-internal-network'
   vnetResourceGroup:
     description:
       Vnet's resource group to be passed via cloud-integration.
-      This config must be set at deployment and cannot be changed later.
     type: string
     default: ''
   subnetName:
     description:
       Vnet's subnet to be used by azure cloud-integration.
-      This config must be set at deployment and cannot be changed later.
     type: string
     default: 'juju-internal-subnet'
   vnetSecurityGroup:
     description:
       Default network sec group (NSG) to be used by azure cloud integration.
-      This config must be set at deployment and cannot be changed later.
     type: string
     default: 'juju-internal-nsg'
   vnetSecurityGroupResourceGroup:
     description:
       Default network sec group (NSG) to be used by azure cloud integration.
-      This config must be set at deployment and cannot be changed later.
     type: string
     default: ''
   credentials:

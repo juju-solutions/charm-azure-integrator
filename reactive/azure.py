@@ -1,5 +1,6 @@
 from traceback import format_exc
 
+from charmhelpers.core import unitdata
 from charms.reactive import (
     when_all,
     when_any,
@@ -15,6 +16,12 @@ from charms import layer
 from charms.layer.azure import get_credentials
 
 
+@hook('update-status')
+def update_status():
+    # need to recheck creds in case the credentials from Juju have changed
+    clear_flag('charm.azure.creds.set')
+
+
 @when_any("config.changed.credentials")
 def update_creds():
     clear_flag("charm.azure.creds.set")
@@ -23,7 +30,15 @@ def update_creds():
 @when_all("apt.installed.azure-cli")
 @when_not("charm.azure.creds.set")
 def get_creds():
-    toggle_flag("charm.azure.creds.set", get_credentials())
+    db = unitdata.kv()
+
+    prev_creds = db.get("charm.azure.creds")
+    creds = get_credentials()
+    db.set("charm.azure.creds", creds)
+
+    toggle_flag("charm.azure.creds.set", creds)
+    if creds != prev_creds:
+        set_flag("charm.azure.creds.changed")
 
 
 @when_all("apt.installed.azure-cli", "charm.azure.creds.set")
@@ -51,13 +66,21 @@ def no_requests():
     "apt.installed.azure-cli",
     "charm.azure.creds.set",
     "charm.azure.initial-role-update",
-    "endpoint.clients.requests-pending",
+)
+@when_any(
+    "charm.azure.creds.changed",
+    "config.changed",
+    "endpoint.clients.requests-pending"
 )
 def handle_requests():
     azure = endpoint_from_name("clients")
     creds_data = get_credentials()
+    config_changed = is_flag_set("config.changed")
+    creds_changed = is_flag_set("charm.azure.creds.changed")
+    refresh_requests = config_changed or creds_changed
+    requests = azure.all_requests if refresh_requests else azure.requests
     try:
-        for request in azure.requests:
+        for request in requests:
             layer.status.maintenance(
                 "Granting request for {} ({})".format(
                     request.vm_name, request.unit_name
@@ -98,6 +121,7 @@ def handle_requests():
         layer.status.blocked(
             "error while granting requests; " "check credentials and debug-log"
         )
+    clear_flag("charm.azure.creds.changed")
 
 
 @when_any("endpoint.lb-consumers.requests_changed")
